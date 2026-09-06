@@ -1,0 +1,23 @@
+{
+    "name": "workspace-os/workspace",
+    "description": "Floors and the workstations that physically sit on them.",
+    "authors": [],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {}
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Workspace\\": "app/",
+            "Modules\\Workspace\\Database\\Factories\\": "database/factories/",
+            "Modules\\Workspace\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Workspace\\Tests\\": "tests/"
+        }
+    }
+}

@@ -1,0 +1,252 @@
+@import 'tailwindcss';
+
+/* Tailwind only ships the classes it can see. The public site's markup lives
+   in a module rather than resources/views, so its templates have to be named
+   here or every utility on those pages comes out unstyled. */
+@source '../../Modules/*/resources/views/**/*.blade.php';
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+
+/* The public site's dark mode is a class the layout sets before first paint,
+   not a media query — so a viewer can override what their OS prefers. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---- the read-only floor plan -------------------------------------------
+   Written out rather than assembled from utilities because the grid spacing
+   and every pin position come from the floor's real dimensions, which are
+   per-floor values a utility class cannot carry. */
+
+.ws-floor {
+    --ws-grid-strong: #dbe3ec;
+    --ws-pin: #4f46e5;
+    --ws-pin-surface: #ffffff;
+    --ws-pin-line: #e2e8f0;
+    --ws-pin-ink: #0f172a;
+
+    /* A desk is drawn as a computer. One masked glyph shared by every marker
+       rather than an <svg> per marker: a floor page can carry three hundred of
+       them, and three hundred inline drawings is a lot of document to build to
+       say the same thing three hundred times. */
+    --ws-monitor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M5.5 4h13A1.5 1.5 0 0 1 20 5.5v9A1.5 1.5 0 0 1 18.5 16h-5.75v2h2.75a.75.75 0 0 1 0 1.5h-7a.75.75 0 0 1 0-1.5h2.75v-2H5.5A1.5 1.5 0 0 1 4 14.5v-9A1.5 1.5 0 0 1 5.5 4Z'/%3E%3C/svg%3E");
+    --ws-pin-size: 1rem;
+}
+
+.dark .ws-floor {
+    --ws-grid-strong: #3f3f46;
+    --ws-pin: #818cf8;
+    --ws-pin-surface: #27272a;
+    --ws-pin-line: #3f3f46;
+    --ws-pin-ink: #f4f4f5;
+}
+
+/* A five-metre lattice. The step arrives as --grid-x / --grid-y, worked out
+   from the floor's width and depth, so the squares mean the same distance on
+   a 12 m mezzanine and a 60 m floor plate. */
+.ws-floor--grid {
+    background-image:
+        linear-gradient(to right, var(--ws-grid-strong) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--ws-grid-strong) 1px, transparent 1px);
+    background-size: var(--grid-x) var(--grid-y);
+}
+
+.ws-pin { display: flex; align-items: center; }
+
+/* A tile carrying a monitor glyph. The tile is a plain element and the glyph
+   is its masked ::before — a mask clips everything painted through it, so a
+   tile that is itself masked could keep neither a fill nor a hover ring. */
+.ws-pin__icon {
+    position: relative;
+    flex: none;
+    width: var(--ws-pin-size);
+    height: var(--ws-pin-size);
+    border-radius: 0.3125rem;
+    background: var(--ws-pin);
+    transition: box-shadow 90ms;
+}
+
+.ws-pin__icon::before {
+    content: "";
+    position: absolute;
+    inset: 0.125rem;
+    background: var(--ws-pin-surface);
+    -webkit-mask: var(--ws-monitor) center / contain no-repeat;
+    mask: var(--ws-monitor) center / contain no-repeat;
+}
+
+.ws-pin__name {
+    margin-left: 0.375rem;
+    padding: 0.125rem 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    line-height: 1.3;
+    white-space: nowrap;
+    color: var(--ws-pin-ink);
+    background: var(--ws-pin-surface);
+    border: 1px solid var(--ws-pin-line);
+    border-radius: 999px;
+}
+
+/* Past a few dozen desks the names are a solid block of text, so they collapse
+   to icons and come back one at a time on hover. Taken out of flow so revealing
+   one cannot nudge the icon off the spot it is marking. */
+.ws-floor[data-compact="true"] .ws-pin__name {
+    position: absolute;
+    left: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 90ms;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.1);
+}
+
+.ws-floor[data-compact="true"] .ws-pin:hover { z-index: 10; }
+.ws-floor[data-compact="true"] .ws-pin:hover .ws-pin__name { opacity: 1; }
+
+
+/* ---- the workstation modal ----------------------------------------------
+   Shared by the flat plan and the 3D building. Written out rather than
+   assembled from utilities because most of it is built in JavaScript from the
+   desk payload, and Tailwind only ships classes it can see in a template. */
+
+.ws-modal {
+    --ws-modal-surface: #ffffff;
+    --ws-modal-ink: #0f172a;
+    --ws-modal-muted: #64748b;
+    --ws-modal-faint: #94a3b8;
+    --ws-modal-line: #e2e8f0;
+
+    /* A <dialog> centres itself with `margin: auto` from the UA stylesheet.
+       Tailwind's preflight zeroes margin on everything, which takes that with
+       it and leaves the dialog in the top-left corner, so it is put back. */
+    margin: auto;
+    width: min(32rem, calc(100vw - 2rem));
+    max-height: min(40rem, calc(100vh - 4rem));
+    padding: 0;
+    overflow: auto;
+    border: 1px solid var(--ws-modal-line);
+    border-radius: 0.875rem;
+    background: var(--ws-modal-surface);
+    color: var(--ws-modal-ink);
+    box-shadow: 0 20px 50px rgb(15 23 42 / 0.22);
+}
+
+.dark .ws-modal {
+    --ws-modal-surface: #18181b;
+    --ws-modal-ink: #fafafa;
+    --ws-modal-muted: #a1a1aa;
+    --ws-modal-faint: #71717a;
+    --ws-modal-line: #3f3f46;
+}
+
+.ws-modal::backdrop {
+    background: rgb(15 23 42 / 0.55);
+    backdrop-filter: blur(2px);
+}
+
+.ws-modal__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.25rem 1.25rem 1rem;
+    border-bottom: 1px solid var(--ws-modal-line);
+}
+
+.ws-modal__eyebrow {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--ws-modal-muted);
+}
+
+.ws-modal__title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+}
+
+.ws-modal__close {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.5rem;
+    color: var(--ws-modal-muted);
+    cursor: pointer;
+    transition: background-color 120ms, color 120ms;
+}
+
+.ws-modal__close:hover { background: var(--ws-modal-line); color: var(--ws-modal-ink); }
+.ws-modal__close svg { width: 1rem; height: 1rem; }
+
+.ws-modal__body { padding: 0.25rem 1.25rem 0; }
+
+.ws-modal__group { padding: 1rem 0; border-bottom: 1px solid var(--ws-modal-line); }
+.ws-modal__group:last-child { border-bottom: 0; }
+
+.ws-modal__group-title {
+    margin-bottom: 0.625rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ws-modal-faint);
+}
+
+.ws-modal__rows { display: flex; flex-direction: column; gap: 0.5rem; }
+
+/* Label left, value right, on one line each. A patching sheet is read by
+   scanning down the values, so they stay in a column of their own. */
+.ws-modal__row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1.5rem;
+    font-size: 0.875rem;
+}
+
+.ws-modal__row dt { color: var(--ws-modal-muted); }
+
+.ws-modal__value {
+    font-weight: 500;
+    text-align: right;
+    /* Long computer names and interface labels wrap rather than push the
+       dialog wider than the viewport. */
+    overflow-wrap: anywhere;
+}
+
+.ws-modal__value--mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8125rem; }
+.ws-modal__value[data-empty="true"] { font-weight: 400; color: var(--ws-modal-faint); }
+
+.ws-modal__notes {
+    font-size: 0.875rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.ws-modal__empty {
+    padding: 1.5rem 0;
+    font-size: 0.875rem;
+    color: var(--ws-modal-muted);
+}
+
+.ws-modal__foot {
+    padding: 0.875rem 1.25rem;
+    border-top: 1px solid var(--ws-modal-line);
+    font-size: 0.75rem;
+    color: var(--ws-modal-faint);
+}
+
+/* The pins and the list rows are buttons now. They must not pick up a button's
+   default chrome, but they do want to say they are clickable. */
+.ws-pin { cursor: pointer; background: none; border: 0; padding: 0; font: inherit; }
+.ws-pin:focus-visible { outline: 2px solid var(--ws-pin); outline-offset: 3px; border-radius: 0.375rem; }
+.ws-pin:hover .ws-pin__icon { box-shadow: 0 0 0 2px var(--ws-pin-surface), 0 0 0 4px var(--ws-pin); }
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+}

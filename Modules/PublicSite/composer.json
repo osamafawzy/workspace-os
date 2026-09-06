@@ -1,0 +1,23 @@
+{
+    "name": "workspace-os/public-site",
+    "description": "The public, read-only view of the building in 3D.",
+    "authors": [],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {}
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\PublicSite\\": "app/",
+            "Modules\\PublicSite\\Database\\Factories\\": "database/factories/",
+            "Modules\\PublicSite\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\PublicSite\\Tests\\": "tests/"
+        }
+    }
+}

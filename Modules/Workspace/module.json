@@ -1,0 +1,15 @@
+{
+    "name": "Workspace",
+    "alias": "workspace",
+    "description": "Floors and the workstations that physically sit on them.",
+    "keywords": [
+        "floors",
+        "workstations",
+        "floor-plan"
+    ],
+    "priority": 0,
+    "providers": [
+        "Modules\\Workspace\\Providers\\WorkspaceServiceProvider"
+    ],
+    "files": []
+}

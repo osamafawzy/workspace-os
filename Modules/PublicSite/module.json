@@ -1,0 +1,16 @@
+{
+    "name": "PublicSite",
+    "alias": "publicsite",
+    "description": "The public, read-only view of the building in 3D.",
+    "keywords": [
+        "public",
+        "3d",
+        "building",
+        "viewer"
+    ],
+    "priority": 0,
+    "providers": [
+        "Modules\\PublicSite\\Providers\\PublicSiteServiceProvider"
+    ],
+    "files": []
+}
