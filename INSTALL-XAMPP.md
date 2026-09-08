@@ -6,36 +6,29 @@ Node yourself. This is every step, in order.
 
 ## 0. Before you start: check the PHP version
 
-This is the one thing that can stop you dead.
-
 ```
-composer.json  →  "php": "^8.3"
+composer.json  →  "php": "^8.2"
 ```
 
-Laravel 13 and Filament 5 need **PHP 8.3 or newer**. Composer checks this and
-refuses to install on anything older, so an XAMPP that ships PHP 8.2 or 8.1 is
-not usable for this project at all.
-
-On the new machine:
+**PHP 8.2 is enough.** The project was downgraded from Laravel 13 to Laravel 12
+specifically so it runs on the PHP 8.2 that XAMPP ships. On the new machine:
 
 ```bat
 C:\xampp\php\php.exe -v
 ```
 
-If that says 8.3, 8.4 or 8.5 you are fine. If it says 8.2 or lower, pick one:
+8.2, 8.3, 8.4 — any of these work. Only **8.1 or lower** is a hard stop, and no
+current XAMPP ships anything that old.
 
-| Option | What to do |
-|---|---|
-| **Newer XAMPP** | Download a build with PHP 8.3+ from apachefriends.org. Check the version on the download page *before* installing — XAMPP was stuck on 8.2 for a long time. |
-| **Laragon instead** | Ships current PHP and MySQL, same Apache/MySQL shape, far less fighting. |
-| **Swap the PHP** | Drop a PHP 8.4 Windows build (Thread Safe, from windows.php.net) into `C:\xampp\php-8.4` and point Apache's `LoadModule php_module` and `PHPIniDir` at it. Fiddly — only if you must keep XAMPP. |
-
-For the record, the machine this was built on has PHP 8.1 on the Windows side,
-which is exactly why everything there goes through `ddev exec`.
+Why this matters: Composer writes the floor into
+`vendor\composer\platform_check.php`, and that file aborts the request before
+Laravel even loads. It now reads `PHP_VERSION_ID >= 80200`. If you ever bump
+`laravel/framework` back to `^13`, the floor returns to 8.3 and this machine
+stops working — see *What you give up* at the end.
 
 ## 1. Install the pieces
 
-1. **XAMPP** (with PHP 8.3+) — gives you Apache, MySQL/MariaDB, phpMyAdmin.
+1. **XAMPP** (PHP 8.2 or newer) — gives you Apache, MySQL/MariaDB, phpMyAdmin.
 2. **Composer** — https://getcomposer.org/Composer-Setup.exe. When it asks for
    the PHP executable, point it at `C:\xampp\php\php.exe`.
 3. **Node.js 20+** — only needed if you want to rebuild the CSS/JS. If you copy
@@ -416,7 +409,7 @@ php -m
 
 | What you see | What it is |
 |---|---|
-| Composer: "requires php ^8.3 but your php version is 8.2" | Step 0. There is no way round this one. |
+| Composer: "requires php ^8.2 but your php version is 8.1" | Step 0. Upgrade PHP; the project cannot go below 8.2. |
 | 404 on everything but the homepage | `AllowOverride All` missing from the vhost, or `mod_rewrite` off. |
 | 500 with no message | `storage\logs\laravel.log`. Usually a missing extension or a database it cannot reach. |
 | "could not find driver" | `pdo_mysql` not enabled in `php.ini`. |
@@ -428,7 +421,12 @@ php -m
 
 ## What you give up
 
-DDEV pinned PHP 8.3 and MySQL 8.0 for everyone. XAMPP pins nothing — the PHP
+DDEV pinned PHP 8.2 and MySQL 8.0 for everyone. XAMPP pins nothing — the PHP
 version, the extension set and the MariaDB version are now whatever that machine
 happens to have. If the two machines ever disagree about a result, that is the
 first place to look.
+
+The project also sits on **Laravel 12, not 13**, and `composer.json` pins
+`config.platform.php` to `8.2` so Composer keeps resolving for 8.2 even when it
+runs on a newer PHP. Laravel 13 requires PHP 8.3, so `composer update` will never
+quietly pull it in. Undoing that pin is what would break this machine.

@@ -18,11 +18,11 @@ against a grid land in the same relative spot the day a drawing arrives.
 
 | | |
 |---|---|
-| Framework | Laravel 13 |
+| Framework | Laravel 12 |
 | Admin UI | Filament 5 |
 | Modules | `nwidart/laravel-modules` |
 | Frontend | Tailwind 4 + Vite |
-| Local env | DDEV (PHP 8.3, MySQL 8.0, nginx-fpm) |
+| Local env | DDEV (PHP 8.2, MySQL 8.0, nginx-fpm) |
 
 Matches the `garage-os` / `clinic-os` / `wealth-os` setup, so nothing here is a
 new tool to learn.
@@ -59,12 +59,12 @@ ddev exec php artisan test          # 135 tests
 ddev exec ./vendor/bin/pint         # code style
 ```
 
-> The Windows PHP on this machine is 8.1, which cannot run Laravel 13 at all.
+> The Windows PHP on this machine is 8.1, which is below the 8.2 floor.
 > Everything goes through `ddev exec`; running `php artisan` directly from
 > PowerShell will fail on a platform check.
 
 To run it on a machine without DDEV — XAMPP, Apache, plain MySQL — see
-[INSTALL-XAMPP.md](INSTALL-XAMPP.md). PHP 8.3 is a hard floor there, and the
+[INSTALL-XAMPP.md](INSTALL-XAMPP.md). PHP 8.2 is the floor there, and the
 two things that quietly break in a hand-rolled setup are `APP_URL` (the floor
 plan URLs are built from it) and `php artisan storage:link`.
 
