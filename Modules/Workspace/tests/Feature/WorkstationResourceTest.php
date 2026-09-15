@@ -22,7 +22,7 @@ class WorkstationResourceTest extends TestCase
         parent::setUp();
 
         Filament::setCurrentPanel('admin');
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->superAdmin()->create());
     }
 
     public function test_the_list_renders_every_desk_in_the_building(): void

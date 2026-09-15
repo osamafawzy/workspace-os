@@ -48,6 +48,33 @@ class FloorPlan extends Page
         $this->record = $this->resolveRecord($record);
     }
 
+    /**
+     * Looking at a plan needs only "view floors". Changing it is checked on
+     * every write below, not just by hiding buttons: the plan calls these
+     * methods straight from the browser, so a hidden button is not a guard.
+     *
+     * @param  array<string, mixed>  $parameters
+     */
+    public static function canAccess(array $parameters = []): bool
+    {
+        $record = $parameters['record'] ?? null;
+
+        return $record instanceof Floor
+            ? (auth()->user()?->can('view', $record) ?? false)
+            : FloorResource::canViewAny();
+    }
+
+    /** Whether this user may move desks around this floor's plan. */
+    public function canArrange(): bool
+    {
+        return auth()->user()?->can('arrange', $this->getRecord()) ?? false;
+    }
+
+    protected function authorizeArranging(): void
+    {
+        abort_unless($this->canArrange(), 403);
+    }
+
     public function getTitle(): string
     {
         return $this->getRecord()->name.' · Plan';
@@ -96,6 +123,7 @@ class FloorPlan extends Page
             ->label('Set size from drawing')
             ->icon(Heroicon::OutlinedArrowsPointingOut)
             ->color('gray')
+            ->authorize(fn (): bool => $this->canArrange())
             ->visible(fn (): bool => $this->getRecord()->planAspectRatio() !== null)
             ->modalHeading('Set the floor size from its drawing')
             ->modalDescription(fn (): string => 'The drawing is '
@@ -185,6 +213,8 @@ class FloorPlan extends Page
 
     public function place(int $workstation, float $x, float $y): void
     {
+        $this->authorizeArranging();
+
         $this->deskOnThisFloor($workstation)->update([
             'position_x' => $this->clamp($x),
             'position_y' => $this->clamp($y),
@@ -193,6 +223,8 @@ class FloorPlan extends Page
 
     public function unplace(int $workstation): void
     {
+        $this->authorizeArranging();
+
         $this->deskOnThisFloor($workstation)->update([
             'position_x' => null,
             'position_y' => null,
@@ -216,11 +248,17 @@ class FloorPlan extends Page
             ->modalDescription('Every field is optional. Anything not traced yet can stay empty.')
             ->modalWidth(Width::ThreeExtraLarge)
             ->modalSubmitActionLabel('Save')
+            // Somebody who may look but not edit still gets the details —
+            // read-only, with no Save button to press.
+            ->disabledSchema(fn (array $arguments): bool => ! $this->canUpdateDesk((int) $arguments['workstation']))
+            ->modalSubmitAction(fn (array $arguments): ?bool => $this->canUpdateDesk((int) $arguments['workstation']) ? null : false)
             ->fillForm(fn (array $arguments): array => $this
                 ->deskOnThisFloor((int) $arguments['workstation'])
                 ->only(Workstation::DETAIL_COLUMNS))
             ->schema(WorkstationDetailFields::make())
             ->action(function (array $arguments, array $data): void {
+                abort_unless($this->canUpdateDesk((int) $arguments['workstation']), 403);
+
                 // Only the detail columns, taken by name. $data is shaped
                 // by the schema, but writing it straight through would mean a
                 // field added to that schema for display could reach update().
@@ -251,6 +289,8 @@ class FloorPlan extends Page
      */
     public function fillArea(float $x1, float $y1, float $x2, float $y2, int $columns, int $rows): array
     {
+        $this->authorizeArranging();
+
         $box = [
             $this->clamp(min($x1, $x2)),
             $this->clamp(min($y1, $y2)),
@@ -300,6 +340,8 @@ class FloorPlan extends Page
      */
     public function autoArrange(): array
     {
+        $this->authorizeArranging();
+
         app(ArrangeWorkstations::class)->handle($this->getRecord());
 
         return $this->planDesks();
@@ -313,6 +355,8 @@ class FloorPlan extends Page
      */
     public function clearPlacements(): array
     {
+        $this->authorizeArranging();
+
         $this->getRecord()->workstations()->update([
             'position_x' => null,
             'position_y' => null,
@@ -331,6 +375,11 @@ class FloorPlan extends Page
         $floor = $this->getRecord();
 
         return $floor->workstations()->findOrFail($workstation);
+    }
+
+    protected function canUpdateDesk(int $workstation): bool
+    {
+        return auth()->user()?->can('update', $this->deskOnThisFloor($workstation)) ?? false;
     }
 
     protected function clamp(float $value): float

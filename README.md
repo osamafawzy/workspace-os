@@ -409,6 +409,46 @@ proportions.
 Three.js is ~140 KB gzipped, so it is pushed by the building page alone rather
 than loaded in the shared layout.
 
+## Users, roles and permissions
+
+The `Access` module adds **Users** and **Roles** to the admin panel.
+
+- A role is a name plus a set of permissions, ticked on the role screen in
+  groups: Floors, Workstations, Users, Roles. A user can hold several roles;
+  their permissions add up.
+- A role with **Super admin** switched on skips the permission checks entirely,
+  so it also covers permissions added in future. `admin@workspace.test` holds
+  the seeded **Super Admin** role.
+- **An account with no role cannot sign in.** The upgrade migration gave every
+  account that existed before roles the Super Admin role, because until then
+  every account could do everything.
+- `floors.view` alone gives a read-only plan: pins open their details, nothing
+  drags. `floors.arrange` is what lets desks move. The plan's write methods
+  check it on the server, not just by hiding buttons.
+
+Permissions are declared in code — each module registers its own in its service
+provider through `App\Support\Permissions`, and a policy checks them. A
+permission that only existed as a database row would be a checkbox that does
+nothing.
+
+Guards against taking over or locking the panel:
+
+- only a super admin can switch the flag on, assign a super admin role, or
+  edit or delete a super admin user or role;
+- nobody can delete their own account;
+- the last super admin cannot be deleted, lose the role, or have the flag
+  taken off their only super admin role.
+
+Two permissions are powerful on their own and worth giving sparingly:
+`roles.update` lets somebody add permissions to any non-super role — including
+one they hold — and `users.update` lets them hand any non-super role to anyone.
+
+Locked out anyway (a database restored from elsewhere, say)?
+
+```bash
+ddev exec php artisan access:grant-super-admin admin@workspace.test
+```
+
 ## Deliberately not built yet
 
 A desk is a name and a position — no status, occupancy, assigned person, or
@@ -418,16 +458,10 @@ the same way. Floors have a size but no shape: they are rectangles, so an
 L-shaped floor has to be approximated by its bounding box until a plan drawing
 is uploaded behind it.
 
-Roles are not modelled: `User::canAccessPanel()` returns `true` for every
-account, and is the single place that changes when they are. That matters more
-now that desks carry the patching record — everyone who can reach the admin
-panel can read and edit the switch, interface and MAC of every desk in the
-building.
-
 The public site has no access control at all — **anyone with the URL can see
 every floor, every desk name, and the whole patching record: switch, interface,
-computer name and MAC.** Both of those were deliberate choices, made explicitly
-rather than by omission. They are also the two worth revisiting first: that
+computer name and MAC.** That was a deliberate choice, made explicitly rather
+than by omission. It is also the one worth revisiting first: that
 combination is a readable map of the network, and if desk names start mapping to
 people it is a map of who sits where as well. Putting the two routes in
 `Modules/PublicSite/routes/web.php` behind `auth` is the whole change.

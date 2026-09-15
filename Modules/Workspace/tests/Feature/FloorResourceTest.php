@@ -23,7 +23,7 @@ class FloorResourceTest extends TestCase
         parent::setUp();
 
         Filament::setCurrentPanel('admin');
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->superAdmin()->create());
     }
 
     public function test_the_panel_requires_a_login(): void

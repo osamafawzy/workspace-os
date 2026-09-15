@@ -23,7 +23,7 @@ class FloorPlanTest extends TestCase
         parent::setUp();
 
         Filament::setCurrentPanel('admin');
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->superAdmin()->create());
     }
 
     public function test_the_plan_page_renders(): void

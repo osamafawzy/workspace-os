@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Modules\Access\Models\Role;
 use Modules\Workspace\Database\Seeders\WorkspaceDatabaseSeeder;
 
 class DatabaseSeeder extends Seeder
@@ -16,7 +17,7 @@ class DatabaseSeeder extends Seeder
     {
         // A known login for the admin panel. updateOrCreate so re-seeding a
         // working database does not fail on the unique email.
-        User::query()->updateOrCreate(
+        $admin = User::query()->updateOrCreate(
             ['email' => 'admin@workspace.test'],
             [
                 'name' => 'Admin',
@@ -24,6 +25,10 @@ class DatabaseSeeder extends Seeder
                 'email_verified_at' => now(),
             ],
         );
+
+        // The seeded login holds the super admin role, so it can reach every
+        // screen — including the ones for handing out narrower roles.
+        $admin->roles()->syncWithoutDetaching([Role::ensureSuperAdmin()->getKey()]);
 
         $this->call([
             WorkspaceDatabaseSeeder::class,

@@ -13,6 +13,7 @@ use Filament\Support\Icons\Heroicon;
 use Modules\Workspace\Actions\ArrangeWorkstations;
 use Modules\Workspace\Actions\CreateWorkstationBatch;
 use Modules\Workspace\Models\Floor;
+use Modules\Workspace\Models\Workstation;
 
 /**
  * "Add many" — a run of numbered desks in one go.
@@ -32,6 +33,8 @@ class AddManyWorkstations
         return Action::make('addManyWorkstations')
             ->label('Add many')
             ->icon(Heroicon::OutlinedSquares2x2)
+            // Hidden without the permission, and refused if called anyway.
+            ->authorize('create', Workstation::class)
             ->modalHeading('Add many workstations')
             ->modalSubmitActionLabel('Create')
             ->schema([

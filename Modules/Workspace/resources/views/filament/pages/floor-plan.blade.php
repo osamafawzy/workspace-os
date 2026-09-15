@@ -25,6 +25,11 @@
         $desks = $this->planDesks();
         $planImage = $this->planImageUrl();
 
+        // Without the arrange permission the plan is something to look at:
+        // pins open their details, nothing drags, and the tools that move
+        // desks are not shown. The server refuses those writes regardless.
+        $editable = $this->canArrange();
+
         // The shape to draw at: the drawing's own when there is one that can be
         // measured, the floor's metres when there is not. Null for an SVG plan,
         // whose size is not in a header getimagesize can read — that one keeps
@@ -391,6 +396,7 @@
             'width' => $floor->width_m,
             'depth' => $floor->depth_m,
             'capacity' => $floor->deskCapacity(),
+            'editable' => $editable,
         ]))"
         x-bind:data-labels="labels ? 'true' : 'false'"
     >
@@ -426,6 +432,7 @@
                 >Names</button>
             </div>
 
+            @if ($editable)
             <div class="ws-plan__group">
                 <button
                     type="button"
@@ -436,6 +443,7 @@
                     title="Draw a box round a bank of desks on the drawing and fill it from the tray"
                 >Fill an area</button>
             </div>
+            @endif
 
             <div class="ws-plan__spacer"></div>
 
@@ -446,6 +454,7 @@
 
             <span class="ws-plan__meta" x-text="`${placed.length} of ${desks.length} placed`"></span>
 
+            @if ($editable)
             <div class="ws-plan__group">
                 <button
                     type="button"
@@ -461,6 +470,7 @@
                     x-bind:disabled="placed.length === 0 || busy"
                 >Clear plan</button>
             </div>
+            @endif
         </div>
 
         {{-- The frame is the shape of whatever is inside it: the drawing
@@ -518,9 +528,14 @@
         </div>
 
         <div class="ws-plan__hint" x-show="! fillMode">
-            Click a desk for its details &middot; drag it to move it &middot;
-            drag it off the plan to take it back &middot; drag on empty space to pan &middot;
-            scroll to zoom &middot; tab to a desk and use the arrow keys to nudge it.
+            @if ($editable)
+                Click a desk for its details &middot; drag it to move it &middot;
+                drag it off the plan to take it back &middot; drag on empty space to pan &middot;
+                scroll to zoom &middot; tab to a desk and use the arrow keys to nudge it.
+            @else
+                Click a desk for its details &middot; drag on empty space to pan &middot;
+                scroll to zoom. You can look at this plan but not rearrange it.
+            @endif
         </div>
 
         <div class="ws-plan__hint" x-show="fillMode" x-cloak>
@@ -617,6 +632,7 @@
             desks,
             floor,
             capacity: floor.capacity,
+            editable: floor.editable,
             zoom: 1,
             panX: 0,
             panY: 0,
@@ -809,6 +825,14 @@
 
                 if (! desk) return
 
+                if (! this.editable) {
+                    event.stopPropagation()
+                    this.selectedId = desk.id
+                    this.openDetails(desk)
+
+                    return
+                }
+
                 // Claimed by a pin, so the viewport underneath must not also
                 // read it as the start of a pan.
                 event.stopPropagation()
@@ -820,6 +844,13 @@
 
                 if (! desk) return
 
+                if (! this.editable) {
+                    event.stopPropagation()
+                    this.openDetails(desk)
+
+                    return
+                }
+
                 event.stopPropagation()
                 this.startDrag(desk, event)
             },
@@ -829,7 +860,7 @@
 
                 if (! desk) return
 
-                if (event.key === 'Enter' || event.key === ' ') {
+                if ((event.key === 'Enter' || event.key === ' ') && this.editable) {
                     event.preventDefault()
                     this.commit(desk, 50, 50)
 
@@ -854,14 +885,14 @@
                     ArrowDown: [0, 1],
                 }
 
-                if (nudges[event.key]) {
+                if (nudges[event.key] && this.editable) {
                     event.preventDefault()
                     this.nudge(desk, ...nudges[event.key])
 
                     return
                 }
 
-                if (event.key === 'Delete' || event.key === 'Backspace') {
+                if ((event.key === 'Delete' || event.key === 'Backspace') && this.editable) {
                     event.preventDefault()
                     this.takeOff(desk)
 
@@ -1133,6 +1164,8 @@
             },
 
             commit(desk, x, y) {
+                if (! this.editable) return
+
                 const previousX = desk.x
                 const previousY = desk.y
 
@@ -1147,6 +1180,8 @@
             },
 
             takeOff(desk) {
+                if (! this.editable) return
+
                 const previousX = desk.x
                 const previousY = desk.y
 

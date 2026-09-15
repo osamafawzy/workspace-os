@@ -42,6 +42,7 @@ class AdminPanelProvider extends PanelProvider
             ->globalSearchKeyBindings(['command+k', 'ctrl+k'])
             ->navigationGroups([
                 NavigationGroup::make('Workspace'),
+                NavigationGroup::make('Access'),
             ])
             ->pages([
                 Dashboard::class,

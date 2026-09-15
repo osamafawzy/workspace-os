@@ -31,7 +31,7 @@ class FillAreaTest extends TestCase
         parent::setUp();
 
         Filament::setCurrentPanel('admin');
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->superAdmin()->create());
     }
 
     /** @return array<int, array{0: float|null, 1: float|null}> */

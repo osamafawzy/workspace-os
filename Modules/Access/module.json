@@ -1,0 +1,15 @@
+{
+    "name": "Access",
+    "alias": "access",
+    "description": "Admin accounts, the roles they hold and what those roles may do.",
+    "keywords": [
+        "users",
+        "roles",
+        "permissions"
+    ],
+    "priority": 0,
+    "providers": [
+        "Modules\\Access\\Providers\\AccessServiceProvider"
+    ],
+    "files": []
+}

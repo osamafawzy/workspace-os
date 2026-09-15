@@ -308,9 +308,9 @@ it is `APP_URL` (step 4) or the storage link (step 6), in that order.
 
 ## Logins and addresses
 
-### There is exactly one user
+### The seeded login
 
-The seeder creates one account and that is the whole user list:
+The seeder creates one account, holding the **Super Admin** role:
 
 | | |
 |---|---|
@@ -350,34 +350,23 @@ the homepage rather than guessing them.
 
 ### Adding more people
 
-There is no registration page and no Users screen in the panel, so accounts are
-made from the command line:
+Signed in as a super admin, use **Access → Users** and **Access → Roles** in
+the panel:
+
+| Address | What it is |
+|---|---|
+| `http://workspace-os.test/admin/users` | accounts — create, change passwords, tick roles |
+| `http://workspace-os.test/admin/roles` | roles — tick what each one may do |
+
+Make the role first, then the user. **A user with no role cannot sign in.** For
+somebody who should only look, a role with just *View floors and their plans*
+and *View workstations* gives a read-only plan.
+
+If an imported database leaves nobody able to sign in:
 
 ```bat
-php artisan tinker
+php artisan access:grant-super-admin admin@workspace.test
 ```
-
-```php
-App\Models\User::create([
-    'name' => 'Osama',
-    'email' => 'you@example.com',
-    'password' => Hash::make('a-real-password'),
-    'email_verified_at' => now(),
-]);
-```
-
-Same way to change a password:
-
-```php
-App\Models\User::where('email', 'admin@workspace.test')
-    ->first()
-    ->update(['password' => Hash::make('a-real-password')]);
-```
-
-**Every account is a full administrator.** `User::canAccessPanel()` returns
-`true` unconditionally — there are no roles and no permissions, so anyone you
-add can edit and delete any floor and any desk. If you want a read-only person,
-give them the public site address and no account.
 
 Before this goes anywhere but a laptop: change the admin password, and set
 `APP_DEBUG=false` and `APP_ENV=production` in `.env`. With debug on, a stack

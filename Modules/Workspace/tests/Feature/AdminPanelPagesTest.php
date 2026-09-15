@@ -26,7 +26,7 @@ class AdminPanelPagesTest extends TestCase
     {
         parent::setUp();
 
-        $this->user = User::factory()->create();
+        $this->user = User::factory()->superAdmin()->create();
     }
 
     public static function pageProvider(): array

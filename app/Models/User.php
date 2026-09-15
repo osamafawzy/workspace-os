@@ -6,18 +6,34 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
-use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Modules\Access\Models\Concerns\HasRoles;
 
-#[Fillable(['name', 'email', 'password'])]
-#[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasFactory, HasRoles, Notifiable;
+
+    /**
+     * Properties, not the #[Fillable] / #[Hidden] attributes: those arrived in
+     * Laravel 13, and Laravel 12 ignores them without a word — which left the
+     * password hash in every serialized user.
+     *
+     * @var list<string>
+     */
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+    ];
+
+    /** @var list<string> */
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
 
     /**
      * Get the attributes that should be cast.
@@ -40,12 +56,12 @@ class User extends Authenticatable implements FilamentUser
      * deployed anywhere real — and the failure looks like a permissions bug
      * rather than a missing opt-in.
      *
-     * Every account is staff for now: there is one panel, one kind of user,
-     * and no roles yet. When roles arrive this is the single place that
-     * decides, so it becomes a permission check rather than a new concept.
+     * An account with no role is a login that goes nowhere, so it does not
+     * get in. What a user can do once inside is decided by the policies, from
+     * the permissions their roles carry.
      */
     public function canAccessPanel(Panel $panel): bool
     {
-        return true;
+        return $this->roles->isNotEmpty();
     }
 }

@@ -1,0 +1,23 @@
+{
+    "name": "workspace-os/access",
+    "description": "Admin accounts, the roles they hold and what those roles may do.",
+    "authors": [],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {}
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Access\\": "app/",
+            "Modules\\Access\\Database\\Factories\\": "database/factories/",
+            "Modules\\Access\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Access\\Tests\\": "tests/"
+        }
+    }
+}

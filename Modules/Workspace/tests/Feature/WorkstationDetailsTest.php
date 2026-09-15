@@ -39,7 +39,7 @@ class WorkstationDetailsTest extends TestCase
         parent::setUp();
 
         Filament::setCurrentPanel('admin');
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->superAdmin()->create());
     }
 
     // ---- the model -----------------------------------------------------
