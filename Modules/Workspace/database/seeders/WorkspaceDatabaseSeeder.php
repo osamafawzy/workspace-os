@@ -4,12 +4,22 @@ namespace Modules\Workspace\Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Storage;
+use Modules\Settings\Models\Site;
 use Modules\Workspace\Actions\ArrangeWorkstations;
 use Modules\Workspace\Actions\CreateWorkstationBatch;
+use Modules\Workspace\Enums\WorkstationStatus;
+use Modules\Workspace\Models\Area;
+use Modules\Workspace\Models\Building;
 use Modules\Workspace\Models\Floor;
+use Modules\Workspace\Models\NetworkSwitch;
+use Modules\Workspace\Models\Rack;
+use Modules\Workspace\Models\SwitchPort;
+use Modules\Workspace\Models\Vlan;
 
 class WorkspaceDatabaseSeeder extends Seeder
 {
+    protected Building $building;
+
     /**
      * A building to click around in.
      *
@@ -26,45 +36,88 @@ class WorkspaceDatabaseSeeder extends Seeder
      *     size this has to stay usable at and it is not worth setting up by
      *     hand to find out.
      *
+     * Every floor has a rack, switches with ports, a VLAN and areas, so every
+     * filter and every column has something real to show.
+     *
      * Seeding is idempotent: re-running it does not produce "Ground Floor"
      * twice, and it does not move desks that have already been positioned.
      */
     public function run(): void
     {
+        $this->building = $this->building();
+
         $this->groundFloor();
 
-        $building = [
+        $floors = [
             ['name' => 'First Floor', 'level' => 1, 'prefix' => 'A-', 'desks' => 8, 'w' => 24, 'd' => 16],
             ['name' => 'Second Floor', 'level' => 2, 'prefix' => 'B-', 'desks' => 4, 'w' => 24, 'd' => 16],
         ];
 
-        foreach ($building as $spec) {
-            $floor = Floor::query()->updateOrCreate(
-                ['level' => $spec['level']],
-                [
-                    'name' => $spec['name'],
-                    'width_m' => $spec['w'],
-                    'depth_m' => $spec['d'],
-                    'is_active' => true,
-                ],
-            );
+        foreach ($floors as $spec) {
+            $floor = $this->floor($spec['level'], [
+                'name' => $spec['name'],
+                'width_m' => $spec['w'],
+                'depth_m' => $spec['d'],
+                'is_active' => true,
+            ]);
 
-            foreach ($this->banks($spec['desks']) as $index => [$x, $y]) {
+            $positions = [];
+
+            foreach ($this->banks($spec['desks']) as $index => $position) {
                 // The last desk on each floor is left untraced on purpose, so
                 // every screen that distinguishes "recorded" from "not yet" —
                 // the ring on the plan, the list badge, the filter, the empty
                 // modal — has both states to show without setting one up.
                 $traced = $index < $spec['desks'] - 1;
 
-                $floor->workstations()->updateOrCreate(
+                $desk = $floor->workstations()->updateOrCreate(
                     ['name' => $spec['prefix'].str_pad((string) ($index + 1), 2, '0', STR_PAD_LEFT)],
-                    ['position_x' => $x, 'position_y' => $y]
-                        + ($traced ? $this->patching($floor, $index) : array_fill_keys(array_keys($this->patching($floor, $index)), null)),
+                    $traced ? $this->patching($floor, $index) : $this->untraced(),
                 );
+
+                // Already on the map from an earlier seed: left where it is.
+                if (! $desk->isPlaced()) {
+                    $positions[$desk->getKey()] = $position;
+                }
             }
+
+            app(ArrangeWorkstations::class)->write($floor, $positions);
+            $this->furnish($floor);
         }
 
         $this->openPlanFloor();
+    }
+
+    /**
+     * The one building the demo lives in.
+     *
+     * Found by name first, so a database that was migrated from before
+     * buildings existed — whose floors were moved into "HQ Tower B" under its
+     * first site — is re-seeded in place rather than given a second building.
+     */
+    protected function building(): Building
+    {
+        return Building::query()->where('name', 'HQ Tower B')->first()
+            ?? Building::query()->create([
+                'site_id' => (Site::query()->orderBy('id')->first()
+                    ?? Site::query()->create(['name' => 'Alexandria Site', 'code' => 'ALX', 'city' => 'Alexandria']))->getKey(),
+                'name' => 'HQ Tower B',
+                'code' => 'HQB',
+            ]);
+    }
+
+    /**
+     * A floor made the first time; left as it is after that. Somebody may have
+     * resized or renamed it in the panel, and resizing a floor rescales its map.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    protected function floor(int $level, array $attributes): Floor
+    {
+        return Floor::query()->firstOrCreate(
+            ['building_id' => $this->building->getKey(), 'level' => $level],
+            $attributes,
+        );
     }
 
     /**
@@ -83,19 +136,16 @@ class WorkspaceDatabaseSeeder extends Seeder
      */
     protected function groundFloor(): void
     {
-        $floor = Floor::query()->updateOrCreate(
-            ['level' => 0],
-            [
-                'name' => 'Ground Floor',
-                // Read off the drawing: 1088 x 778 is a 1.4 room, and 70 x 50 m
-                // is the size of floor plate that holds the four hundred seats
-                // it marks out.
-                'width_m' => 70,
-                'depth_m' => 50,
-                'description' => 'Four zones either side of the central atrium, plus training rooms along the west wall.',
-                'is_active' => true,
-            ],
-        );
+        $floor = $this->floor(0, [
+            'name' => 'Ground Floor',
+            // Read off the drawing: 1088 x 778 is a 1.4 room, and 70 x 50 m
+            // is the size of floor plate that holds the four hundred seats it
+            // marks out.
+            'width_m' => 70,
+            'depth_m' => 50,
+            'description' => 'Four zones either side of the central atrium, plus training rooms along the west wall.',
+            'is_active' => true,
+        ]);
 
         $this->attachPlan($floor);
 
@@ -107,7 +157,6 @@ class WorkspaceDatabaseSeeder extends Seeder
 
             for ($index = 0; $index < $count; $index++) {
                 $seat++;
-                $record = $this->patching($floor, $seat - 1);
 
                 $floor->workstations()->updateOrCreate(
                     ['name' => 'G-'.str_pad((string) $seat, 2, '0', STR_PAD_LEFT)],
@@ -118,8 +167,8 @@ class WorkspaceDatabaseSeeder extends Seeder
                     $index < $count - 1
                         // The zone on the sheet is the zone printed on the
                         // drawing, not a number worked out from a loop counter.
-                        ? ['zone_number' => 'Zone '.$zone] + $record
-                        : array_fill_keys(array_keys($record), null),
+                        ? $this->patching($floor, $seat - 1, 'Zone '.$zone)
+                        : $this->untraced(),
                 );
             }
 
@@ -170,6 +219,55 @@ class WorkspaceDatabaseSeeder extends Seeder
     }
 
     /**
+     * The rest of what is on a floor besides desks: its outside walls, a door,
+     * the fire exits and a name on the floor; and on the small floors, which
+     * have room for them, an IT room with its rack, a meeting room and a
+     * printer. Enough for the map editor to have every kind of object to show.
+     *
+     * Only once per floor — a floor that already has anything but desks on its
+     * map is left alone, so re-seeding never stacks a second set of walls.
+     */
+    protected function furnish(Floor $floor): void
+    {
+        if ($floor->mapObjects()->where('type', '!=', 'workstation')->exists()) {
+            return;
+        }
+
+        $w = $floor->width_m;
+        $d = $floor->depth_m;
+        $wall = fn (float $x, float $y, float $length, float $rotation): array => [
+            'type' => 'wall', 'x' => $x, 'y' => $y, 'width' => $length, 'depth' => 0.2, 'height' => 2.8, 'rotation' => $rotation,
+        ];
+
+        $objects = [
+            $wall($w / 2, 0, $w, 0),
+            $wall($w / 2, $d, $w, 0),
+            $wall(0, $d / 2, $d, 90),
+            $wall($w, $d / 2, $d, 90),
+            ['type' => 'door', 'x' => $w / 2, 'y' => $d, 'width' => 1.8, 'depth' => 0.2, 'height' => 2.1, 'props' => ['swing' => 'left']],
+            ['type' => 'emergency-exit', 'x' => 1.2, 'y' => $d - 0.6, 'width' => 1.2, 'depth' => 0.5, 'props' => ['text' => 'EXIT']],
+            ['type' => 'emergency-exit', 'x' => $w - 1.2, 'y' => 0.6, 'width' => 1.2, 'depth' => 0.5, 'props' => ['text' => 'EXIT']],
+            ['type' => 'text', 'x' => $w / 2, 'y' => $d - 1.2, 'width' => 4, 'depth' => 0.8, 'label' => $floor->name, 'props' => ['text' => $floor->name, 'size' => 0.6]],
+        ];
+
+        if ($w <= 30) {
+            $objects[] = ['type' => 'it-room', 'x' => 2.2, 'y' => 1.6, 'width' => 4, 'depth' => 3, 'label' => 'IT room'];
+            $objects[] = ['type' => 'rack', 'x' => 1.0, 'y' => 1.0, 'width' => 0.6, 'depth' => 1.0, 'height' => 2.0, 'label' => sprintf('RACK-%02d', $floor->level + 1)];
+            $objects[] = ['type' => 'meeting-room', 'x' => $w - 2.8, 'y' => $d - 2.4, 'width' => 5, 'depth' => 4, 'label' => 'Meeting room'];
+            $objects[] = ['type' => 'printer', 'x' => $w / 2, 'y' => 1.0, 'width' => 0.6, 'depth' => 0.5, 'height' => 1.0, 'label' => 'Printer'];
+        }
+
+        foreach ($objects as $object) {
+            $floor->mapObjects()->create([
+                'z' => 0,
+                'height' => 0,
+                'rotation' => 0,
+                ...$object,
+            ]);
+        }
+    }
+
+    /**
      * The floor this system exists for: 60 x 40 m, three hundred desks.
      *
      * Created through the same bulk-add and auto-arrange the admin uses, so the
@@ -177,23 +275,23 @@ class WorkspaceDatabaseSeeder extends Seeder
      */
     protected function openPlanFloor(): void
     {
-        $floor = Floor::query()->updateOrCreate(
-            ['level' => 3],
-            [
-                'name' => 'Third Floor',
-                'width_m' => 60,
-                'depth_m' => 40,
-                'description' => 'Open plan. The floor this system is built to hold.',
-                'is_active' => true,
-            ],
-        );
+        $floor = $this->floor(3, [
+            'name' => 'Third Floor',
+            'width_m' => 60,
+            'depth_m' => 40,
+            'description' => 'Open plan. The floor this system is built to hold.',
+            'is_active' => true,
+        ]);
 
         if ($floor->workstations()->count() >= 300) {
+            $this->furnish($floor);
+
             return;
         }
 
         app(CreateWorkstationBatch::class)->handle($floor, 'C-', 300);
         app(ArrangeWorkstations::class)->handle($floor);
+        $this->furnish($floor);
 
         // Two thirds traced, a third still to do. A floor where every desk is
         // documented shows the modal but hides the question the ring on the
@@ -201,6 +299,8 @@ class WorkspaceDatabaseSeeder extends Seeder
         $floor->workstations()->orderBy('name')->get()
             ->each(function ($desk, int $index) use ($floor): void {
                 if ($index % 3 === 2) {
+                    $desk->update(['status' => WorkstationStatus::Available]);
+
                     return;
                 }
 
@@ -209,34 +309,99 @@ class WorkspaceDatabaseSeeder extends Seeder
     }
 
     /**
-     * A plausible patching record for one desk.
+     * A plausible record for one desk.
      *
      * Derived from the floor and the desk's place on it rather than randomised,
      * so a re-seed does not rewrite the whole building with different numbers
      * and a screenshot taken today still matches one taken tomorrow.
      *
-     * @return array<string, string|null>
+     * @return array<string, mixed>
      */
-    protected function patching(Floor $floor, int $index): array
+    protected function patching(Floor $floor, int $index, ?string $area = null): array
     {
-        $zone = intdiv($index, 12) + 1;
-        $switch = intdiv($index, 24) + 1;
+        $level = $floor->level;
+        $switchNumber = intdiv($index, 24) + 1;
+
+        $rack = Rack::query()->firstOrCreate(
+            ['building_id' => $this->building->getKey(), 'number' => sprintf('RACK-%02d', $level + 1)],
+            ['floor_id' => $floor->getKey(), 'name' => "{$floor->name} comms room"],
+        );
+
+        $switch = NetworkSwitch::query()->firstOrCreate(
+            ['building_id' => $this->building->getKey(), 'number' => sprintf('SW-%02d', ($level * 10) + $switchNumber)],
+            [
+                'rack_id' => $rack->getKey(),
+                'name' => sprintf('HQB-L%d-ACC-%02d', $level, $switchNumber),
+                'model' => 'Catalyst 9200-48P',
+                'port_count' => 48,
+            ],
+        );
+
+        // Each switch serves 24 consecutive desks, so these never collide on
+        // one switch.
+        $port = SwitchPort::query()->firstOrCreate(
+            ['network_switch_id' => $switch->getKey(), 'name' => 'Gi1/0/'.(($index % 48) + 1)],
+            ['number' => (string) (($index % 48) + 1)],
+        );
+
+        $vlan = Vlan::query()->firstOrCreate(
+            ['site_id' => $this->building->site_id, 'number' => 100 + $level],
+            ['name' => $floor->name, 'subnet' => "10.20.{$level}.0/23"],
+        );
 
         return [
-            'site_location' => 'HQ Tower B',
-            'zone_number' => 'Z'.($floor->level + 1).'-'.$zone,
+            'area_id' => $this->area($floor, $area ?? 'Zone Z'.($level + 1).'-'.(intdiv($index, 12) + 1))->getKey(),
+            'status' => match (true) {
+                $index % 25 === 24 => WorkstationStatus::Faulty,
+                $index % 40 === 39 => WorkstationStatus::Offline,
+                default => WorkstationStatus::Active,
+            },
             'workstation_number' => (string) ($index + 1),
-            // Every fourth desk has its switch port traced but not which side
-            // of the split it takes — a half-finished row is the normal state
-            // of a patching sheet, and the demo should show one.
+            'desk_row' => (string) (intdiv($index, 12) + 1),
+            'desk_position' => (string) (($index % 12) + 1),
+            'switch_port_id' => $port->getKey(),
+            // Every fourth desk has its switch port traced but not the split
+            // — a half-finished row is the normal state of a patching sheet,
+            // and the demo should show one.
             'port_split_number' => $index % 4 === 3 ? null : ($index % 2 === 0 ? 'A' : 'B'),
-            'switch_number' => sprintf('SW-%02d', ($floor->level * 10) + $switch),
-            'interface_number' => 'Gi1/0/'.(($index % 48) + 1),
-            'computer_name' => sprintf('HQ-L%d-WS%03d', $floor->level, $index + 1),
+            'vlan_id' => $vlan->getKey(),
+            'computer_name' => sprintf('HQ-L%d-WS%03d', $level, $index + 1),
+            'pc_serial' => sprintf('PC%d%05d', $level, $index + 1),
+            'monitor_serial' => sprintf('MON%d%05d', $level, $index + 1),
+            'ip_address' => sprintf('10.20.%d.%d', ($level * 2) + intdiv($index, 250), ($index % 250) + 1),
             // A made-up MAC in the locally administered range, so nothing here
             // can collide with a real vendor's address block.
-            'mac_address' => sprintf('02:00:00:%02X:%02X:%02X', $floor->level, intdiv($index, 256), $index % 256),
+            'mac_address' => sprintf('02:00:00:%02X:%02X:%02X', $level, intdiv($index, 256), $index % 256),
         ];
+    }
+
+    /**
+     * Every detail empty: a desk that exists and has not been traced.
+     *
+     * @return array<string, mixed>
+     */
+    protected function untraced(): array
+    {
+        return [
+            'area_id' => null,
+            'status' => WorkstationStatus::Available,
+            'workstation_number' => null,
+            'desk_row' => null,
+            'desk_position' => null,
+            'switch_port_id' => null,
+            'port_split_number' => null,
+            'vlan_id' => null,
+            'computer_name' => null,
+            'pc_serial' => null,
+            'monitor_serial' => null,
+            'ip_address' => null,
+            'mac_address' => null,
+        ];
+    }
+
+    protected function area(Floor $floor, string $name): Area
+    {
+        return Area::query()->firstOrCreate(['floor_id' => $floor->getKey(), 'name' => $name]);
     }
 
     /**

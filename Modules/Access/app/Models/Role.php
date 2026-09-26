@@ -3,6 +3,7 @@
 namespace Modules\Access\Models;
 
 use App\Models\User;
+use App\Support\Audit\Auditable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -22,7 +23,7 @@ use Modules\Access\Database\Factories\RoleFactory;
 class Role extends Model
 {
     /** @use HasFactory<RoleFactory> */
-    use HasFactory;
+    use Auditable, HasFactory;
 
     public const SUPER_ADMIN = 'Super Admin';
 

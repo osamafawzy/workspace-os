@@ -5,7 +5,11 @@ namespace Modules\Workspace\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Modules\Workspace\Database\Seeders\WorkspaceDatabaseSeeder;
+use Modules\Workspace\Models\Building;
 use Modules\Workspace\Models\Floor;
+use Modules\Workspace\Models\FloorObject;
+use Modules\Workspace\Models\Vlan;
+use Modules\Workspace\Models\Workstation;
 use Tests\TestCase;
 
 /**
@@ -49,11 +53,13 @@ class WorkspaceSeederTest extends TestCase
         $this->assertCount(72, $desks);
         $this->assertSame(0, $ground->workstations()->unplaced()->count());
 
-        foreach ($desks as $desk) {
-            $this->assertGreaterThanOrEqual(0, $desk->position_x);
-            $this->assertLessThanOrEqual(100, $desk->position_x);
-            $this->assertGreaterThanOrEqual(0, $desk->position_y);
-            $this->assertLessThanOrEqual(100, $desk->position_y);
+        foreach ($desks->load(['mapObject', 'floor']) as $desk) {
+            [$x, $y] = $desk->planPosition();
+
+            $this->assertGreaterThan(0, $x);
+            $this->assertLessThan(100, $x);
+            $this->assertGreaterThan(0, $y);
+            $this->assertLessThan(100, $y);
         }
     }
 
@@ -68,20 +74,37 @@ class WorkspaceSeederTest extends TestCase
 
         $this->assertSame(
             ['Zone A', 'Zone B', 'Zone C', 'Zone D'],
-            $ground->workstations()
-                ->whereNotNull('zone_number')
-                ->distinct()
-                ->orderBy('zone_number')
-                ->pluck('zone_number')
-                ->all(),
+            $ground->areas()->orderBy('name')->pluck('name')->all(),
         );
+
+        $inZone = fn (string $zone) => $ground->mapObjects()->whereHas('workstation.area', fn ($query) => $query->where('name', $zone));
 
         // Zone A is the bank along the top of the drawing, Zone B the one along
         // the bottom. If those ever swap, the plan and the sheet disagree.
-        $this->assertLessThan(
-            $ground->workstations()->where('zone_number', 'Zone B')->min('position_y'),
-            $ground->workstations()->where('zone_number', 'Zone A')->max('position_y'),
-        );
+        $this->assertLessThan($inZone('Zone B')->min('y'), $inZone('Zone A')->max('y'));
+    }
+
+    /** Every floor has a rack, switches with ports, and a VLAN, so every filter has something to show. */
+    public function test_the_building_is_patched_into_a_real_network(): void
+    {
+        $building = Building::query()->where('name', 'HQ Tower B')->firstOrFail();
+
+        $this->assertSame(4, $building->floors()->count());
+        $this->assertSame(4, $building->racks()->count());
+        $this->assertGreaterThan(0, $building->switches()->count());
+        $this->assertSame(4, Vlan::query()->where('site_id', $building->site_id)->count());
+
+        // The floors have walls, doors, exits and, on the small ones, rooms.
+        foreach (['wall', 'door', 'emergency-exit', 'it-room', 'rack', 'printer'] as $type) {
+            $this->assertTrue(
+                FloorObject::query()->where('type', $type)->exists(),
+                "the demo has no {$type}",
+            );
+        }
+
+        // No port is claimed twice.
+        $patched = Workstation::query()->whereNotNull('switch_port_id');
+        $this->assertSame($patched->count(), $patched->distinct()->count('switch_port_id'));
     }
 
     /**
@@ -103,6 +126,9 @@ class WorkspaceSeederTest extends TestCase
         $this->seed(WorkspaceDatabaseSeeder::class);
 
         $this->assertSame(4, Floor::query()->count());
+        // Re-seeding does not stack a second set of walls or desks on the map.
+        $this->assertSame(1, FloorObject::query()->whereNull('workstation_id')->where('type', 'door')->whereHas('floor', fn ($query) => $query->where('level', 1))->count());
+        $this->assertSame(72, Floor::query()->where('level', 0)->firstOrFail()->mapObjects()->where('type', 'workstation')->count());
         $this->assertSame(72, Floor::query()->where('level', 0)->firstOrFail()->workstations()->count());
     }
 }

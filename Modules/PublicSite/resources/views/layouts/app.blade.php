@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>@yield('title', config('app.name'))</title>
+    <title>@yield('title', app(\App\Support\Branding::class)->name())</title>
     <meta name="description" content="@yield('description', 'Every floor in the building and where each workstation sits.')">
 
     {{-- The theme is read before paint so a dark-mode viewer never gets a
@@ -29,10 +29,22 @@
         <div class="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3.5 sm:px-6">
             <a href="{{ route('building') }}" class="flex items-center gap-2.5 font-semibold tracking-tight">
                 <span class="grid size-7 place-items-center rounded-md bg-indigo-600 text-[0.7rem] font-bold text-white">WS</span>
-                {{ config('app.name') }}
+                {{ app(\App\Support\Branding::class)->name() }}
             </a>
 
             <nav class="ml-auto flex items-center gap-1 text-sm">
+                @if (($navigationBuildings ?? collect())->count() > 1)
+                    @foreach ($navigationBuildings as $navBuilding)
+                        <a
+                            href="{{ route('building', ['building' => $navBuilding->id]) }}"
+                            class="hidden rounded-md px-2.5 py-1.5 text-slate-600 transition hover:bg-slate-200/70 hover:text-slate-900 sm:block dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                            @if (($currentBuilding ?? null)?->is($navBuilding)) aria-current="page" @endif
+                        >{{ $navBuilding->name }}</a>
+                    @endforeach
+
+                    <span class="hidden text-slate-600 sm:block dark:text-zinc-400" aria-hidden="true">|</span>
+                @endif
+
                 @foreach ($navigationFloors ?? [] as $navFloor)
                     <a
                         href="{{ route('building.floor', $navFloor) }}"

@@ -1,6 +1,6 @@
-@extends('publicsite::layouts.app', ['navigationFloors' => $floors])
+@extends('publicsite::layouts.app', ['navigationFloors' => $floors, 'navigationBuildings' => $buildings, 'currentBuilding' => $building])
 
-@section('title', config('app.name').' · The building')
+@section('title', app(\App\Support\Branding::class)->name().' · The building')
 @section('description', 'Every floor in the building, stacked, with each workstation where it physically sits.')
 
 @push('head')
@@ -10,7 +10,7 @@
 @section('content')
     <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12">
         <div class="max-w-2xl">
-            <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">The building</h1>
+            <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">{{ $buildings->count() > 1 && $building ? $building->name : 'The building' }}</h1>
             <p class="mt-3 text-slate-600 dark:text-zinc-400">
                 {{ $floors->count() }} {{ Str::plural('floor', $floors->count()) }},
                 {{ $floors->sum('workstations_count') }} {{ Str::plural('workstation', $floors->sum('workstations_count')) }}.

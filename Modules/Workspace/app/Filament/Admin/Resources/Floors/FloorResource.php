@@ -2,17 +2,18 @@
 
 namespace Modules\Workspace\Filament\Admin\Resources\Floors;
 
-use BackedEnum;
+use App\Support\Navigation\HasConfigurableNavigation;
 use Filament\Navigation\NavigationItem;
+use Filament\Pages\Enums\SubNavigationPosition;
 use Filament\Pages\Page as BasePage;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Modules\Workspace\Filament\Admin\Resources\Floors\Pages\CreateFloor;
 use Modules\Workspace\Filament\Admin\Resources\Floors\Pages\EditFloor;
 use Modules\Workspace\Filament\Admin\Resources\Floors\Pages\FloorPlan;
 use Modules\Workspace\Filament\Admin\Resources\Floors\Pages\ListFloors;
+use Modules\Workspace\Filament\Admin\Resources\Floors\RelationManagers\AreasRelationManager;
 use Modules\Workspace\Filament\Admin\Resources\Floors\RelationManagers\WorkstationsRelationManager;
 use Modules\Workspace\Filament\Admin\Resources\Floors\Schemas\FloorForm;
 use Modules\Workspace\Filament\Admin\Resources\Floors\Tables\FloorsTable;
@@ -20,15 +21,16 @@ use Modules\Workspace\Models\Floor;
 
 class FloorResource extends Resource
 {
+    use HasConfigurableNavigation;
+
     protected static ?string $model = Floor::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedBuildingOffice2;
+    protected static string $navigationKey = 'floor-setup';
 
     protected static ?string $recordTitleAttribute = 'name';
 
-    protected static ?int $navigationSort = 10;
-
-    protected static string|\UnitEnum|null $navigationGroup = 'Workspace';
+    /** Tabs above the page, so the map gets the full width. */
+    protected static ?SubNavigationPosition $subNavigationPosition = SubNavigationPosition::Top;
 
     public static function form(Schema $schema): Schema
     {
@@ -49,6 +51,7 @@ class FloorResource extends Resource
     {
         return [
             WorkstationsRelationManager::class,
+            AreasRelationManager::class,
         ];
     }
 

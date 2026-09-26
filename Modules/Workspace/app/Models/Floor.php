@@ -2,11 +2,14 @@
 
 namespace Modules\Workspace\Models;
 
+use App\Support\Audit\Auditable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Storage;
+use Modules\Workspace\Actions\ScaleFloorMap;
 use Modules\Workspace\Database\Factories\FloorFactory;
 
 /**
@@ -16,6 +19,7 @@ use Modules\Workspace\Database\Factories\FloorFactory;
  * deliberately thin: it names a level, and it owns the desks on it.
  *
  * @property int $id
+ * @property int $building_id
  * @property string $name
  * @property int $level
  * @property float $width_m
@@ -23,11 +27,12 @@ use Modules\Workspace\Database\Factories\FloorFactory;
  * @property string|null $description
  * @property bool $is_active
  * @property string|null $plan_path
+ * @property int $map_revision
  */
 class Floor extends Model
 {
     /** @use HasFactory<FloorFactory> */
-    use HasFactory;
+    use Auditable, HasFactory;
 
     /**
      * Memo for planAspectRatio(). `false` means "not measured yet", which is
@@ -37,6 +42,7 @@ class Floor extends Model
     private float|null|false $planShape = false;
 
     protected $fillable = [
+        'building_id',
         'name',
         'level',
         'width_m',
@@ -44,6 +50,7 @@ class Floor extends Model
         'description',
         'is_active',
         'plan_path',
+        'map_revision',
     ];
 
     protected function casts(): array
@@ -53,7 +60,28 @@ class Floor extends Model
             'width_m' => 'float',
             'depth_m' => 'float',
             'is_active' => 'boolean',
+            'map_revision' => 'integer',
         ];
+    }
+
+    /**
+     * A floor resized after its map was drawn keeps the map where it was over
+     * the drawing: every object moves in proportion, and walls and rooms
+     * stretch with it. See ScaleFloorMap.
+     */
+    protected static function booted(): void
+    {
+        static::updated(function (Floor $floor): void {
+            if (! $floor->wasChanged(['width_m', 'depth_m'])) {
+                return;
+            }
+
+            app(ScaleFloorMap::class)->handle(
+                $floor,
+                (float) $floor->getOriginal('width_m'),
+                (float) $floor->getOriginal('depth_m'),
+            );
+        });
     }
 
     protected static function newFactory(): FloorFactory
@@ -65,6 +93,30 @@ class Floor extends Model
     public function workstations(): HasMany
     {
         return $this->hasMany(Workstation::class);
+    }
+
+    /** @return HasMany<FloorObject, $this> */
+    public function mapObjects(): HasMany
+    {
+        return $this->hasMany(FloorObject::class);
+    }
+
+    /** @return BelongsTo<Building, $this> */
+    public function building(): BelongsTo
+    {
+        return $this->belongsTo(Building::class);
+    }
+
+    /** @return HasMany<Area, $this> */
+    public function areas(): HasMany
+    {
+        return $this->hasMany(Area::class);
+    }
+
+    /** "HQ Tower B · Floor 2" — a floor is only unambiguous with its building. */
+    public function fullName(): string
+    {
+        return $this->building ? "{$this->building->name} · {$this->name}" : $this->name;
     }
 
     /** @param Builder<Floor> $query */

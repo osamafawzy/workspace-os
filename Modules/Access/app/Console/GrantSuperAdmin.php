@@ -3,6 +3,7 @@
 namespace Modules\Access\Console;
 
 use App\Models\User;
+use App\Support\Audit\AuditLogger;
 use Illuminate\Console\Command;
 use Modules\Access\Models\Role;
 
@@ -31,6 +32,8 @@ class GrantSuperAdmin extends Command
 
         $role = Role::ensureSuperAdmin();
         $user->roles()->syncWithoutDetaching([$role->getKey()]);
+
+        app(AuditLogger::class)->log('granted super admin', 'Access', $user, [], ['role' => $role->name], $user->email);
 
         $this->info("{$user->email} now holds the {$role->name} role.");
 

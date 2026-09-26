@@ -1,5 +1,10 @@
 {
     "Access": true,
     "Workspace": true,
-    "PublicSite": true
+    "PublicSite": true,
+    "Settings": true,
+    "Audit": true,
+    "Employees": true,
+    "Assets": true,
+    "Reports": true
 }

@@ -3,6 +3,7 @@
 namespace Modules\PublicSite\Http\Controllers;
 
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Storage;
 use Modules\PublicSite\Support\BuildingGeometry;
@@ -10,12 +11,25 @@ use Modules\Workspace\Models\Floor;
 
 class BuildingController extends Controller
 {
-    /** The building: every active floor, stacked, in 3D. */
-    public function index(): View
+    /**
+     * A building: every active floor, stacked, in 3D.
+     *
+     * The first building unless another is asked for by `?building=`. With
+     * only one building nobody ever sees the choice.
+     */
+    public function index(Request $request): View
     {
-        $floors = BuildingGeometry::floors();
+        $buildings = BuildingGeometry::buildings();
+
+        $building = $request->filled('building')
+            ? $buildings->firstWhere('id', (int) $request->query('building')) ?? abort(404)
+            : $buildings->first();
+
+        $floors = $building ? BuildingGeometry::floors($building) : collect();
 
         return view('publicsite::building', [
+            'building' => $building,
+            'buildings' => $buildings,
             'floors' => $floors,
             'scene' => BuildingGeometry::forScene($floors),
         ]);
@@ -32,7 +46,7 @@ class BuildingController extends Controller
     {
         abort_unless($floor->is_active, 404);
 
-        $desks = $floor->workstations()->orderBy('name')->get();
+        $desks = $floor->workstations()->with(['mapObject', 'floor'])->orderBy('name')->get();
 
         return view('publicsite::floor', [
             'floor' => $floor,
@@ -45,7 +59,9 @@ class BuildingController extends Controller
             'planImage' => $floor->hasPlan()
                 ? Storage::disk('public')->url($floor->plan_path)
                 : null,
-            'otherFloors' => BuildingGeometry::floors()->reject(
+            'building' => $floor->building,
+            'buildings' => BuildingGeometry::buildings(),
+            'otherFloors' => BuildingGeometry::floors($floor->building)->reject(
                 fn (Floor $other): bool => $other->is($floor),
             ),
         ]);

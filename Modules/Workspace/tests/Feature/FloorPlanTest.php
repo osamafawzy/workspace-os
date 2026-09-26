@@ -4,16 +4,21 @@ namespace Modules\Workspace\Tests\Feature;
 
 use App\Models\User;
 use Filament\Facades\Filament;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Modules\Workspace\Filament\Admin\Resources\Floors\Pages\FloorPlan;
 use Modules\Workspace\Models\Floor;
+use Modules\Workspace\Models\FloorObject;
 use Modules\Workspace\Models\Workstation;
 use Tests\TestCase;
 
+/**
+ * The map page: what it hands the editor, and what it accepts back.
+ *
+ * The editing itself happens in the browser; these prove the server half —
+ * the config the editor starts from and the save and create-desk calls, the
+ * only ways anything the editor did reaches the database.
+ */
 class FloorPlanTest extends TestCase
 {
     use RefreshDatabase;
@@ -26,7 +31,7 @@ class FloorPlanTest extends TestCase
         $this->actingAs(User::factory()->superAdmin()->create());
     }
 
-    public function test_the_plan_page_renders(): void
+    public function test_the_map_page_renders_the_editor(): void
     {
         $floor = Floor::factory()->create(['name' => 'First Floor']);
         Workstation::factory()->for($floor)->create(['name' => 'A-01']);
@@ -34,15 +39,15 @@ class FloorPlanTest extends TestCase
         $this->get("/admin/floors/{$floor->getKey()}/plan")
             ->assertSuccessful()
             ->assertSee('First Floor')
-            // The interaction is entirely client side, so "the page rendered"
-            // has to mean the Alpine component and its desk data actually
-            // reached the browser — not just that a 200 came back.
-            ->assertSee('workspaceFloorPlan', escape: false)
-            ->assertSee('ws-plan__viewport', escape: false)
+            // The interaction is client side, so "rendered" has to mean the
+            // component, its script, its stylesheet and its data arrived.
+            ->assertSee('floorMap(', escape: false)
+            ->assertSee('components/floor-map.js', escape: false)
+            ->assertSee('floor-map.css', escape: false)
             ->assertSee('A-01');
     }
 
-    public function test_the_plan_page_is_behind_the_login(): void
+    public function test_the_map_page_is_behind_the_login(): void
     {
         $floor = Floor::factory()->create();
 
@@ -51,182 +56,124 @@ class FloorPlanTest extends TestCase
         $this->get("/admin/floors/{$floor->getKey()}/plan")->assertRedirect('/admin/login');
     }
 
-    public function test_it_hands_the_browser_every_desk_with_its_coordinates(): void
+    public function test_the_editor_gets_the_floor_its_objects_its_desks_and_every_type(): void
     {
-        $floor = Floor::factory()->create();
-        $placed = Workstation::factory()->for($floor)->placed(25.0, 75.0)->create(['name' => 'A-01']);
-        $loose = Workstation::factory()->for($floor)->create(['name' => 'A-02']);
+        $floor = Floor::factory()->create(['width_m' => 30, 'depth_m' => 20]);
+        $placed = Workstation::factory()->for($floor)->placed(50, 50)->create(['name' => 'A-01']);
+        Workstation::factory()->for($floor)->create(['name' => 'A-02']);
+        FloorObject::factory()->for($floor)->wall(8)->create();
 
-        $desks = Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
-            ->instance()
-            ->planDesks();
+        $config = Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])->instance()->mapConfig();
 
-        $this->assertSame([
-            ['id' => $placed->id, 'name' => 'A-01', 'x' => 25.0, 'y' => 75.0, 'details' => false],
-            ['id' => $loose->id, 'name' => 'A-02', 'x' => null, 'y' => null, 'details' => false],
-        ], $desks);
-    }
+        $this->assertSame(30.0, $config['floor']['width']);
+        $this->assertCount(2, $config['objects']);
+        $this->assertCount(2, $config['desks']);
+        $this->assertSame('A-01', $config['desks'][$placed->id]['name']);
+        $this->assertSame('#22c55e', $config['desks'][$placed->id]['statusColor']);
 
-    public function test_a_desk_can_be_placed(): void
-    {
-        $floor = Floor::factory()->create();
-        $desk = Workstation::factory()->for($floor)->create();
+        $desk = collect($config['objects'])->firstWhere('workstation_id', $placed->id);
+        $this->assertEquals(15.0, $desk['x']);
+        $this->assertEquals(10.0, $desk['y']);
 
-        Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
-            ->call('place', $desk->getKey(), 33.33, 66.67);
-
-        $desk->refresh();
-
-        $this->assertSame(33.33, $desk->position_x);
-        $this->assertSame(66.67, $desk->position_y);
-    }
-
-    /**
-     * The browser clamps as it drags, but the coordinate arriving here is a
-     * number off the wire and nothing stops it being 4000.
-     */
-    public function test_coordinates_are_clamped_to_the_plan(): void
-    {
-        $floor = Floor::factory()->create();
-        $desk = Workstation::factory()->for($floor)->create();
-
-        Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
-            ->call('place', $desk->getKey(), -40.0, 4000.0);
-
-        $desk->refresh();
-
-        $this->assertSame(0.0, $desk->position_x);
-        $this->assertSame(100.0, $desk->position_y);
-    }
-
-    public function test_a_desk_can_be_taken_off_the_plan(): void
-    {
-        $floor = Floor::factory()->create();
-        $desk = Workstation::factory()->for($floor)->placed()->create();
-
-        Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
-            ->call('unplace', $desk->getKey());
-
-        $desk->refresh();
-
-        $this->assertNull($desk->position_x);
-        $this->assertNull($desk->position_y);
-        $this->assertDatabaseHas('workstations', ['id' => $desk->id]);
-    }
-
-    /**
-     * The page is reached by floor, and the desk id arrives from the browser.
-     * A desk on another floor must not be movable from here.
-     */
-    public function test_it_refuses_to_move_a_desk_belonging_to_another_floor(): void
-    {
-        $floor = Floor::factory()->create();
-        $elsewhere = Workstation::factory()->for(Floor::factory())->create();
-
-        $page = Livewire::test(FloorPlan::class, ['record' => $floor->getKey()]);
-
-        // Scoped through the floor's own relationship, so the desk is simply
-        // not found — which surfaces as a 404 over HTTP, not a silent write.
-        try {
-            $page->call('place', $elsewhere->getKey(), 10.0, 10.0);
-            $this->fail('Expected the desk on another floor to be unreachable.');
-        } catch (ModelNotFoundException) {
-            // Expected.
+        foreach (['workstation', 'desk', 'rack', 'printer', 'room', 'wall', 'door', 'text', 'meeting-room', 'it-room', 'column', 'emergency-exit', 'custom'] as $type) {
+            $this->assertContains($type, array_column($config['types'], 'key'));
         }
 
-        $this->assertNull($elsewhere->refresh()->position_x);
-        $this->assertNull($elsewhere->position_y);
+        $this->assertTrue($config['canArrange']);
     }
 
-    public function test_auto_arrange_places_every_loose_desk_inside_the_plan(): void
+    public function test_the_floor_selector_lists_every_floor(): void
+    {
+        $floor = Floor::factory()->create(['name' => 'Ground']);
+        Floor::factory()->create(['name' => 'Roof']);
+
+        $floors = Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])->instance()->mapConfig()['floors'];
+
+        $this->assertCount(2, $floors);
+        $this->assertTrue(collect($floors)->firstWhere('current', true)['label'] === $floor->fresh()->fullName());
+    }
+
+    public function test_saving_the_map_writes_what_changed(): void
+    {
+        $floor = Floor::factory()->create(['width_m' => 30, 'depth_m' => 20]);
+        $desk = Workstation::factory()->for($floor)->create(['name' => 'A-01']);
+
+        $result = Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
+            ->call('saveMap', 0, [
+                ['id' => null, 'type' => 'workstation', 'workstation_id' => $desk->id, 'x' => 4, 'y' => 5, 'z' => 0, 'width' => 1.4, 'depth' => 1.5, 'height' => 0.75, 'rotation' => 90, 'props' => [], 'locked' => false],
+                ['id' => null, 'type' => 'wall', 'x' => 15, 'y' => 0, 'z' => 0, 'width' => 30, 'depth' => 0.2, 'height' => 2.8, 'rotation' => 0, 'props' => [], 'locked' => true],
+            ])
+            ->assertNotified('Map saved')
+            ->effects['returns'][0] ?? null;
+
+        $this->assertTrue($desk->refresh()->isPlaced());
+        $this->assertSame(90.0, $desk->mapObject->rotation);
+        $this->assertSame(1, $floor->refresh()->map_revision);
+        $this->assertSame(2, $floor->mapObjects()->count());
+        $this->assertTrue($floor->mapObjects()->where('type', 'wall')->value('locked'));
+    }
+
+    public function test_a_viewer_cannot_save_or_create_desks(): void
     {
         $floor = Floor::factory()->create();
-        Workstation::factory()->count(7)->for($floor)->create();
+
+        $this->actingAs(User::factory()->withPermissions('floors.view')->create());
+
+        Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
+            ->call('saveMap', 0, [])
+            ->assertForbidden();
+
+        Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
+            ->call('createDesk', 'WS-9')
+            ->assertForbidden();
+
+        $this->assertFalse(
+            Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])->instance()->mapConfig()['canArrange'],
+        );
+    }
+
+    public function test_a_save_from_a_stale_editor_is_refused(): void
+    {
+        $floor = Floor::factory()->create();
+        $floor->update(['map_revision' => 4]);
+
+        Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
+            ->call('saveMap', 3, [
+                ['id' => null, 'type' => 'wall', 'x' => 1, 'y' => 1, 'z' => 0, 'width' => 3, 'depth' => 0.2, 'height' => 2.8, 'rotation' => 0],
+            ])
+            ->assertNotified('Somebody else has changed this map');
+
+        $this->assertSame(0, $floor->mapObjects()->count());
+    }
+
+    public function test_a_bad_save_is_refused_with_its_reasons(): void
+    {
+        $floor = Floor::factory()->create();
+
+        Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
+            ->call('saveMap', 0, [
+                ['id' => null, 'type' => 'spaceship', 'x' => 1, 'y' => 1],
+            ])
+            ->assertNotified('The map was not saved');
+
+        $this->assertSame(0, $floor->mapObjects()->count());
+    }
+
+    public function test_a_desk_can_be_created_from_the_map(): void
+    {
+        $floor = Floor::factory()->create();
+        Workstation::factory()->for($floor)->create(['name' => 'WS-001']);
 
         $page = Livewire::test(FloorPlan::class, ['record' => $floor->getKey()]);
-        $page->call('autoArrange');
 
-        // The browser refreshes its own list from what the call hands back, so
-        // the return value is the contract, not just a side effect.
-        $desks = $page->instance()->planDesks();
+        $page->call('createDesk', 'WS-002');
+        $this->assertDatabaseHas('workstations', ['floor_id' => $floor->id, 'name' => 'WS-002', 'status' => 'available']);
 
-        $this->assertCount(7, $desks);
-
-        foreach ($desks as $desk) {
-            $this->assertNotNull($desk['x']);
-            $this->assertNotNull($desk['y']);
-            $this->assertGreaterThanOrEqual(0, $desk['x']);
-            $this->assertLessThanOrEqual(100, $desk['x']);
-            $this->assertGreaterThanOrEqual(0, $desk['y']);
-            $this->assertLessThanOrEqual(100, $desk['y']);
-        }
-
-        $this->assertSame(0, $floor->workstations()->unplaced()->count());
+        $page->call('createDesk', 'WS-001');
+        $this->assertSame(1, $floor->workstations()->where('name', 'WS-001')->count());
     }
 
-    public function test_auto_arrange_leaves_desks_that_are_already_placed_alone(): void
-    {
-        $floor = Floor::factory()->create();
-        $settled = Workstation::factory()->for($floor)->placed(12.0, 88.0)->create();
-        Workstation::factory()->count(3)->for($floor)->create();
-
-        Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])->call('autoArrange');
-
-        $settled->refresh();
-
-        $this->assertSame(12.0, $settled->position_x);
-        $this->assertSame(88.0, $settled->position_y);
-    }
-
-    /**
-     * `unplaced()` mixes an OR into whatever query it lands in. Without its
-     * own bracket that OR escapes the floor constraint, and auto-arranging one
-     * floor silently rearranges every other floor's loose desks too.
-     */
-    public function test_auto_arrange_does_not_touch_another_floor(): void
-    {
-        $floor = Floor::factory()->create();
-        Workstation::factory()->count(2)->for($floor)->create();
-
-        $otherFloor = Floor::factory()->create();
-        $untouched = Workstation::factory()->for($otherFloor)->create();
-
-        Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])->call('autoArrange');
-
-        $this->assertNull($untouched->refresh()->position_x);
-        $this->assertNull($untouched->position_y);
-    }
-
-    public function test_clearing_the_plan_empties_the_coordinates_but_keeps_the_desks(): void
-    {
-        $floor = Floor::factory()->create();
-        Workstation::factory()->count(3)->for($floor)->placed()->create();
-
-        $page = Livewire::test(FloorPlan::class, ['record' => $floor->getKey()]);
-        $page->call('clearPlacements');
-
-        $desks = $page->instance()->planDesks();
-
-        $this->assertCount(3, $desks);
-        $this->assertSame([null], array_unique(array_column($desks, 'x')));
-        $this->assertSame(3, $floor->workstations()->count());
-        $this->assertSame(0, $floor->workstations()->placed()->count());
-    }
-
-    public function test_clearing_one_floor_leaves_another_floors_placements_intact(): void
-    {
-        $floor = Floor::factory()->create();
-        Workstation::factory()->for($floor)->placed()->create();
-
-        $otherFloor = Floor::factory()->create();
-        $untouched = Workstation::factory()->for($otherFloor)->placed(40.0, 60.0)->create();
-
-        Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])->call('clearPlacements');
-
-        $this->assertSame(40.0, $untouched->refresh()->position_x);
-    }
-
-    public function test_desks_can_be_added_in_bulk_from_the_plan_page(): void
+    public function test_desks_can_be_added_in_bulk_from_the_map_page(): void
     {
         $floor = Floor::factory()->create(['width_m' => 60, 'depth_m' => 40]);
 
@@ -241,13 +188,13 @@ class FloorPlanTest extends TestCase
             ->assertHasNoActionErrors();
 
         $this->assertSame(120, $floor->workstations()->count());
-        // "Place them on the plan straight away" was on, so nothing should be
-        // left sitting in the tray.
+        // "Place them on the plan straight away" was on, so nothing is left
+        // in the tray.
         $this->assertSame(0, $floor->workstations()->unplaced()->count());
-        $this->assertDatabaseHas('workstations', ['floor_id' => $floor->id, 'name' => 'C-120']);
+        $this->assertSame(120, $floor->mapObjects()->where('type', 'workstation')->count());
     }
 
-    public function test_bulk_added_desks_stay_off_the_plan_when_asked(): void
+    public function test_bulk_added_desks_stay_off_the_map_when_asked(): void
     {
         $floor = Floor::factory()->create();
 
@@ -263,54 +210,30 @@ class FloorPlanTest extends TestCase
         $this->assertSame(5, $floor->workstations()->unplaced()->count());
     }
 
-    public function test_the_plan_uses_the_uploaded_drawing_when_there_is_one(): void
+    public function test_the_map_uses_the_uploaded_drawing_when_there_is_one(): void
     {
         $bare = Floor::factory()->create();
         $drawn = Floor::factory()->create(['plan_path' => 'floor-plans/first.png']);
 
-        $this->assertNull(
-            Livewire::test(FloorPlan::class, ['record' => $bare->getKey()])->instance()->planImageUrl(),
-        );
+        $this->assertNull(Livewire::test(FloorPlan::class, ['record' => $bare->getKey()])->instance()->planImageUrl());
 
         $this->assertStringContainsString(
             'floor-plans/first.png',
-            Livewire::test(FloorPlan::class, ['record' => $drawn->getKey()])->instance()->planImageUrl(),
+            Livewire::test(FloorPlan::class, ['record' => $drawn->getKey()])->instance()->mapConfig()['floor']['planUrl'],
         );
     }
 
-    /** A desk is a computer, not a dot. */
-    public function test_each_desk_is_drawn_as_a_computer(): void
+    /** Status colours on the map follow a details save without losing the draft. */
+    public function test_saving_details_tells_the_map_the_new_status(): void
     {
         $floor = Floor::factory()->create();
-        Workstation::factory()->for($floor)->placed()->create();
+        $desk = Workstation::factory()->for($floor)->placed()->create();
 
         Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
-            ->assertSee('ws-plan__pin-icon', escape: false)
-            ->assertSee('--ws-monitor', escape: false);
-    }
-
-    /**
-     * The window onto the plan is the shape of the drawing in it. Framing a
-     * 1.4 drawing in a 1.5 window letterboxes it, and a pin at 50%, 50% then
-     * sits half a metre from the desk it is marking.
-     */
-    public function test_the_plan_is_framed_at_the_shape_of_the_drawing(): void
-    {
-        Storage::fake('public');
-        Storage::disk('public')->putFileAs(
-            'floor-plans',
-            UploadedFile::fake()->image('plan.png', 400, 200),
-            'plan.png',
-        );
-
-        $floor = Floor::factory()->create([
-            'width_m' => 60,
-            'depth_m' => 40,
-            'plan_path' => 'floor-plans/plan.png',
-        ]);
-
-        Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
-            ->assertSee('aspect-ratio: 2;', escape: false)
-            ->assertDontSee('aspect-ratio: 1.5;', escape: false);
+            ->callAction('deskDetails', arguments: ['workstation' => $desk->getKey()], data: ['status' => 'faulty'])
+            ->assertHasNoActionErrors()
+            ->assertDispatched('desk-details-saved', fn (string $name, array $params): bool => $params['workstation'] === $desk->id
+                && $params['desk']['status'] === 'faulty'
+                && $params['desk']['statusColor'] === '#ef4444');
     }
 }

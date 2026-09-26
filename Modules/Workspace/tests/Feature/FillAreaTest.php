@@ -15,12 +15,12 @@ use Modules\Workspace\Models\Workstation;
 use Tests\TestCase;
 
 /**
- * Filling an area of the plan.
+ * Filling an area of the floor with desks, on the server.
  *
- * A drawing shows desks in banks, and a bank is a rectangle. Drawing a box
- * round one and saying how many desks go across and down is the difference
- * between an uploaded plan being usable and being a picture you then have to
- * drag two hundred desks onto one at a time.
+ * In the editor the same thing happens in the browser, as an undoable draft;
+ * this is the server version the seeder and "Add many" use. A drawing shows
+ * desks in banks, and a bank is a rectangle: drawing a box round one and saying
+ * how many go across and down replaces two hundred drags.
  */
 class FillAreaTest extends TestCase
 {
@@ -34,136 +34,92 @@ class FillAreaTest extends TestCase
         $this->actingAs(User::factory()->superAdmin()->create());
     }
 
-    /** @return array<int, array{0: float|null, 1: float|null}> */
-    private function coordinates(Floor $floor): array
+    /** @return array<int, array{0: float, 1: float}|null> as percentages of the floor, in name order */
+    private function positions(Floor $floor): array
     {
         return $floor->workstations()
+            ->with(['mapObject', 'floor'])
             ->orderBy('name')
             ->get()
-            ->map(fn (Workstation $desk): array => [$desk->position_x, $desk->position_y])
+            ->map(fn (Workstation $desk): ?array => $desk->planPosition())
             ->all();
+    }
+
+    private function desks(Floor $floor, int $count): void
+    {
+        foreach (range(1, $count) as $i) {
+            $floor->workstations()->create(['name' => 'A-'.str_pad((string) $i, 2, '0', STR_PAD_LEFT)]);
+        }
     }
 
     public function test_desks_spread_to_the_corners_of_the_box(): void
     {
         $floor = Floor::factory()->create();
-        Workstation::factory()->count(6)->for($floor)->sequence(
-            ['name' => 'A-1'], ['name' => 'A-2'], ['name' => 'A-3'],
-            ['name' => 'A-4'], ['name' => 'A-5'], ['name' => 'A-6'],
-        )->create();
+        $this->desks($floor, 4);
 
-        app(ArrangeWorkstations::class)->fill($floor, [20.0, 40.0, 80.0, 60.0], 3, 2);
+        app(ArrangeWorkstations::class)->fill($floor, [10, 20, 30, 40], 2, 2);
 
-        // The box was drawn round a bank of desks, so the outermost desks sit
-        // on its edges rather than inset from them.
-        $this->assertSame([
-            [20.0, 40.0], [50.0, 40.0], [80.0, 40.0],
-            [20.0, 60.0], [50.0, 60.0], [80.0, 60.0],
-        ], $this->coordinates($floor));
+        $this->assertSame([[10.0, 20.0], [30.0, 20.0], [10.0, 40.0], [30.0, 40.0]], $this->positions($floor));
     }
 
-    /** A zone should hold a contiguous run, not a scatter of leftovers. */
     public function test_desks_come_off_the_tray_in_name_order(): void
     {
         $floor = Floor::factory()->create();
+        $this->desks($floor, 5);
 
-        foreach (['A-03', 'A-01', 'A-04', 'A-02'] as $name) {
-            Workstation::factory()->for($floor)->create(['name' => $name]);
-        }
+        $placed = app(ArrangeWorkstations::class)->fill($floor, [0, 0, 50, 50], 3, 1);
 
-        $placed = app(ArrangeWorkstations::class)->fill($floor, [0.0, 0.0, 100.0, 0.0], 2, 1);
-
-        $this->assertSame(['A-01', 'A-02'], $placed->pluck('name')->all());
-        $this->assertSame(['A-03', 'A-04'], $floor->workstations()->unplaced()->orderBy('name')->pluck('name')->all());
+        $this->assertSame(['A-01', 'A-02', 'A-03'], $placed->pluck('name')->all());
+        $this->assertSame(2, $floor->workstations()->unplaced()->count());
     }
 
-    public function test_a_desk_already_on_the_plan_is_left_where_it_is(): void
+    public function test_a_desk_already_on_the_map_is_left_where_it_is(): void
     {
         $floor = Floor::factory()->create();
-        $settled = Workstation::factory()->for($floor)->placed(11.0, 22.0)->create(['name' => 'A-01']);
-        Workstation::factory()->for($floor)->create(['name' => 'A-02']);
+        $settled = Workstation::factory()->for($floor)->placed(5.0, 5.0)->create(['name' => 'A-00']);
+        $this->desks($floor, 2);
 
-        app(ArrangeWorkstations::class)->fill($floor, [50.0, 50.0, 60.0, 60.0], 4, 4);
+        app(ArrangeWorkstations::class)->fill($floor, [50, 50, 90, 90], 2, 1);
 
-        $this->assertSame(11.0, $settled->refresh()->position_x);
-        $this->assertSame(22.0, $settled->position_y);
-    }
-
-    public function test_filling_places_from_the_tray_through_the_page(): void
-    {
-        $floor = Floor::factory()->create();
-        Workstation::factory()->count(4)->for($floor)->create();
-
-        $desks = Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
-            ->call('fillArea', 10.0, 10.0, 30.0, 30.0, 2, 2)
-            ->assertHasNoErrors()
-            ->instance()
-            ->planDesks();
-
-        $this->assertSame([null], array_unique(array_map(
-            fn (array $desk): ?bool => $desk['x'] === null ?: null,
-            $desks,
-        )));
-        $this->assertSame(4, $floor->workstations()->placed()->count());
-    }
-
-    /**
-     * The box arrives from the browser as four numbers. Nothing stops a crafted
-     * call asking for one that runs from 400% to -50%, backwards.
-     */
-    public function test_a_box_from_outside_the_plan_is_clamped_and_squared_up(): void
-    {
-        $floor = Floor::factory()->create();
-        Workstation::factory()->count(2)->for($floor)->sequence(['name' => 'A-1'], ['name' => 'A-2'])->create();
-
-        Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
-            ->call('fillArea', 400.0, 90.0, -50.0, 10.0, 2, 1);
-
-        // x came in backwards and off both ends, so it is squared up to 0..100
-        // and the two desks take its corners. y came in bottom-first and is
-        // squared up to 10..90; a single row sits down the middle of it.
-        $this->assertSame([[0.0, 50.0], [100.0, 50.0]], $this->coordinates($floor));
-    }
-
-    /**
-     * A crafted 10,000 x 10,000 would build a hundred million positions on its
-     * way to discovering the tray held two desks.
-     */
-    public function test_an_absurd_grid_is_capped(): void
-    {
-        $floor = Floor::factory()->create();
-        Workstation::factory()->count(2)->for($floor)->create();
-
-        Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
-            ->call('fillArea', 0.0, 0.0, 100.0, 100.0, 100000, 100000);
-
-        $this->assertSame(2, $floor->workstations()->placed()->count());
+        $this->assertSame([5.0, 5.0], $settled->refresh()->planPosition());
+        $this->assertSame(3, $floor->workstations()->placed()->count());
     }
 
     public function test_filling_cannot_reach_another_floors_desks(): void
     {
         $floor = Floor::factory()->create();
-        Workstation::factory()->for($floor)->create();
+        $elsewhere = Workstation::factory()->for(Floor::factory())->create();
+        $this->desks($floor, 1);
 
-        $elsewhere = Floor::factory()->create();
-        $untouched = Workstation::factory()->for($elsewhere)->create();
+        app(ArrangeWorkstations::class)->fill($floor, [0, 0, 100, 100], 10, 10);
 
-        Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
-            ->call('fillArea', 0.0, 0.0, 100.0, 100.0, 10, 10);
-
-        $this->assertNull($untouched->refresh()->position_x);
+        $this->assertFalse($elsewhere->refresh()->isPlaced());
     }
 
-    /** Asking for more than there is places what there is, rather than nothing. */
     public function test_asking_for_more_desks_than_the_tray_holds_places_what_it_has(): void
     {
         $floor = Floor::factory()->create();
-        Workstation::factory()->count(3)->for($floor)->create();
+        $this->desks($floor, 3);
 
-        Livewire::test(FloorPlan::class, ['record' => $floor->getKey()])
-            ->call('fillArea', 0.0, 0.0, 100.0, 100.0, 5, 5);
+        $placed = app(ArrangeWorkstations::class)->fill($floor, [0, 0, 100, 100], 5, 5);
 
+        $this->assertCount(3, $placed);
         $this->assertSame(3, $floor->workstations()->placed()->count());
+    }
+
+    public function test_placements_are_stored_in_metres_on_the_floor_map(): void
+    {
+        $floor = Floor::factory()->create(['width_m' => 60, 'depth_m' => 40]);
+        $this->desks($floor, 1);
+
+        app(ArrangeWorkstations::class)->fill($floor, [50, 50, 50, 50], 1, 1);
+
+        $object = $floor->mapObjects()->firstOrFail();
+
+        $this->assertSame('workstation', $object->type);
+        $this->assertSame(30.0, $object->x);
+        $this->assertSame(20.0, $object->y);
+        $this->assertSame(1, $floor->refresh()->map_revision);
     }
 
     // ---- setting the floor's size from its drawing -------------------------

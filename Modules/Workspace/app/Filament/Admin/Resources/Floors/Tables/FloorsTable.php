@@ -10,6 +10,7 @@ use Filament\Actions\EditAction;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Modules\Workspace\Filament\Admin\Resources\Floors\FloorResource;
@@ -22,6 +23,8 @@ class FloorsTable
             // Bottom of the building first, which is how anyone standing in it
             // would list the floors.
             ->defaultSort('level')
+            ->defaultGroup('building.name')
+            ->modifyQueryUsing(fn ($query) => $query->with('building.site'))
             ->columns([
                 TextColumn::make('level')
                     ->label('Level')
@@ -35,6 +38,18 @@ class FloorsTable
                     ->searchable()
                     ->sortable()
                     ->description(fn ($record): ?string => $record->description),
+
+                TextColumn::make('building.name')
+                    ->label('Building')
+                    ->description(fn ($record): ?string => $record->building?->site?->name)
+                    ->sortable()
+                    ->toggleable(),
+
+                TextColumn::make('areas_count')
+                    ->label('Areas')
+                    ->counts('areas')
+                    ->alignCenter()
+                    ->toggleable(),
 
                 TextColumn::make('width_m')
                     ->label('Size')
@@ -72,6 +87,10 @@ class FloorsTable
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
+                SelectFilter::make('building_id')
+                    ->label('Building')
+                    ->relationship('building', 'name'),
+
                 TernaryFilter::make('is_active')->label('Active'),
             ])
             ->recordActions([

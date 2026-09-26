@@ -3,12 +3,14 @@
 namespace Modules\Workspace\Filament\Admin\Resources\Floors\Schemas;
 
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
+use Modules\Workspace\Models\Building;
 
 class FloorForm
 {
@@ -16,14 +18,33 @@ class FloorForm
     {
         return $schema->components([
             Section::make('Floor')
-                ->description('A physical floor of the building.')
+                ->description('A physical floor of a building.')
                 ->columns(2)
                 ->schema([
+                    Select::make('building_id')
+                        ->label('Building')
+                        ->required()
+                        ->options(fn (): array => Building::query()
+                            ->with('site')
+                            ->orderBy('site_id')
+                            ->orderBy('name')
+                            ->get()
+                            ->mapWithKeys(fn (Building $building): array => [$building->getKey() => $building->fullName()])
+                            ->all())
+                        ->default(fn (): ?int => Building::query()->count() === 1 ? Building::query()->value('id') : null)
+                        ->searchable()
+                        ->preload()
+                        // Name and level are unique within the building, so a
+                        // changed building re-runs both checks.
+                        ->live()
+                        ->columnSpanFull()
+                        ->helperText('Add buildings under Floor Management → Buildings.'),
+
                     TextInput::make('name')
                         ->label('Name')
                         ->required()
                         ->maxLength(100)
-                        ->unique(ignoreRecord: true)
+                        ->unique(ignoreRecord: true, modifyRuleUsing: fn ($rule, Get $get) => $rule->where('building_id', $get('building_id')))
                         ->placeholder('Ground Floor'),
 
                     TextInput::make('level')
@@ -32,7 +53,7 @@ class FloorForm
                         ->integer()
                         ->minValue(-20)
                         ->maxValue(200)
-                        ->unique(ignoreRecord: true)
+                        ->unique(ignoreRecord: true, modifyRuleUsing: fn ($rule, Get $get) => $rule->where('building_id', $get('building_id')))
                         // Spelling out the convention here is cheaper than
                         // discovering later that half the building was
                         // numbered from 1 and half from 0.

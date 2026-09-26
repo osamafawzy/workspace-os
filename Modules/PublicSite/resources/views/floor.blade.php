@@ -1,6 +1,6 @@
-@extends('publicsite::layouts.app', ['navigationFloors' => $otherFloors])
+@extends('publicsite::layouts.app', ['navigationFloors' => $otherFloors, 'navigationBuildings' => $buildings, 'currentBuilding' => $building])
 
-@section('title', $floor->name.' · '.config('app.name'))
+@section('title', $floor->name.' · '.app(\App\Support\Branding::class)->name())
 @section('description', $floor->name.' — where each workstation sits on this floor.')
 
 @push('head')
@@ -10,7 +10,7 @@
 @section('content')
     <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12">
         <nav class="flex items-center gap-2 text-sm text-slate-500 dark:text-zinc-400" aria-label="Breadcrumb">
-            <a href="{{ route('building') }}" class="transition hover:text-slate-900 dark:hover:text-zinc-100">The building</a>
+            <a href="{{ $buildings->count() > 1 ? route('building', ['building' => $building->id]) : route('building') }}" class="transition hover:text-slate-900 dark:hover:text-zinc-100">{{ $buildings->count() > 1 ? $building->name : 'The building' }}</a>
             <span aria-hidden="true">/</span>
             <span class="text-slate-900 dark:text-zinc-100">{{ $floor->name }}</span>
         </nav>
@@ -119,7 +119,7 @@
                                     <span class="shrink-0 text-xs text-indigo-600 dark:text-indigo-400">details</span>
                                 @elseif ($desk->isPlaced())
                                     <span class="shrink-0 font-mono text-xs text-slate-400 dark:text-zinc-500">
-                                        {{ $desk->position_x }}, {{ $desk->position_y }}
+                                        {{ implode(', ', $desk->planPosition() ?? []) }}
                                     </span>
                                 @else
                                     <span class="shrink-0 text-xs text-slate-400 dark:text-zinc-500">not placed</span>

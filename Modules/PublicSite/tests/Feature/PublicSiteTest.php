@@ -6,7 +6,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Modules\PublicSite\Support\BuildingGeometry;
+use Modules\Workspace\Models\Building;
 use Modules\Workspace\Models\Floor;
+use Modules\Workspace\Models\NetworkSwitch;
+use Modules\Workspace\Models\SwitchPort;
 use Modules\Workspace\Models\Workstation;
 use Tests\TestCase;
 
@@ -86,22 +89,26 @@ class PublicSiteTest extends TestCase
     public function test_the_scene_carries_what_each_desk_has_recorded(): void
     {
         $ground = Floor::factory()->create(['level' => 0]);
+        $switch = NetworkSwitch::factory()->create(['building_id' => $ground->building_id, 'number' => 'SW-03']);
         Workstation::factory()->for($ground)->placed()->create([
             'name' => 'G-01',
-            'switch_number' => 'SW-03',
-            'interface_number' => 'Gi1/0/24',
+            'switch_port_id' => SwitchPort::factory()->create(['network_switch_id' => $switch->id, 'name' => 'Gi1/0/24'])->id,
+            // Recorded, but not something the public site shows.
+            'ip_address' => '10.20.30.40',
         ]);
 
         $desk = BuildingGeometry::forScene(BuildingGeometry::floors())['floors'][0]['desks'][0];
 
-        // Location and Machine are entirely empty, so they are left out; the
-        // untraced split inside Patching is kept, because a blank beside two
-        // filled fields says "not traced yet" rather than "no such field".
-        $this->assertSame(['Patching'], array_column($desk['groups'], 'title'));
+        // Location and Machine have nothing public in them, so they are left
+        // out; the untraced split and MAC inside Network are kept, because a
+        // blank beside filled fields says "not traced yet" rather than "no
+        // such field". The IP address is recorded but never sent.
+        $this->assertSame(['Network'], array_column($desk['groups'], 'title'));
         $this->assertSame([
+            ['label' => 'Switch', 'value' => 'SW-03', 'mono' => false],
+            ['label' => 'Port', 'value' => 'Gi1/0/24', 'mono' => true],
             ['label' => 'Port Split Number', 'value' => null, 'mono' => false],
-            ['label' => 'Switch Number', 'value' => 'SW-03', 'mono' => false],
-            ['label' => 'Interface Number', 'value' => 'Gi1/0/24', 'mono' => false],
+            ['label' => 'MAC Address', 'value' => null, 'mono' => true],
         ], $desk['groups'][0]['rows']);
     }
 
@@ -276,5 +283,51 @@ class PublicSiteTest extends TestCase
             ->assertSuccessful()
             ->assertDontSee('PublicSite/resources/js/building.js', escape: false)
             ->assertSee('floor', escape: false);
+    }
+
+    /**
+     * The scene stacks floors by level, so two buildings' first floors must
+     * never be drawn one on top of the other: one building at a time.
+     */
+    public function test_with_several_buildings_the_scene_shows_one_at_a_time(): void
+    {
+        $tower = Building::factory()->create(['name' => 'Tower']);
+        $annex = Building::factory()->create(['name' => 'Annex']);
+        Floor::factory()->for($tower)->create(['name' => 'Tower First', 'level' => 1]);
+        $annexFloor = Floor::factory()->for($annex)->create(['name' => 'Annex First', 'level' => 1]);
+
+        $this->get(route('building'))
+            ->assertSuccessful()
+            ->assertSee('Tower First')
+            ->assertDontSee('Annex First')
+            // The other building is one click away.
+            ->assertSee(route('building', ['building' => $annex->id]), escape: false);
+
+        $this->get(route('building', ['building' => $annex->id]))
+            ->assertSuccessful()
+            ->assertSee('Annex First')
+            ->assertDontSee('Tower First');
+
+        // A floor page lists the other floors of its own building only.
+        $this->get(route('building.floor', $annexFloor))
+            ->assertSuccessful()
+            ->assertDontSee('Tower First');
+    }
+
+    public function test_an_unknown_building_is_not_found(): void
+    {
+        Floor::factory()->create();
+
+        $this->get(route('building', ['building' => 999999]))->assertNotFound();
+    }
+
+    public function test_one_building_never_shows_a_building_switcher(): void
+    {
+        $floor = Floor::factory()->create();
+
+        $this->get(route('building'))
+            ->assertSuccessful()
+            ->assertSee('The building')
+            ->assertDontSee('?building=', escape: false);
     }
 }

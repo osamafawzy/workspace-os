@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Support\Audit\Auditable;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
@@ -14,7 +15,7 @@ use Modules\Access\Models\Concerns\HasRoles;
 class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, HasRoles, Notifiable;
+    use Auditable, HasFactory, HasRoles, Notifiable;
 
     /**
      * Properties, not the #[Fillable] / #[Hidden] attributes: those arrived in
@@ -34,6 +35,12 @@ class User extends Authenticatable implements FilamentUser
         'password',
         'remember_token',
     ];
+
+    /** Users and their roles are managed from the Access module. */
+    public function auditModule(): string
+    {
+        return 'Access';
+    }
 
     /**
      * Get the attributes that should be cast.

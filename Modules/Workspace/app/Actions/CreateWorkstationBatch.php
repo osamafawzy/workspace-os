@@ -2,6 +2,7 @@
 
 namespace Modules\Workspace\Actions;
 
+use App\Support\Audit\AuditLogger;
 use Illuminate\Support\Facades\DB;
 use Modules\Workspace\Models\Floor;
 
@@ -53,12 +54,19 @@ class CreateWorkstationBatch
                 array_map(fn (string $name): array => [
                     'floor_id' => $floor->getKey(),
                     'name' => $name,
-                    'position_x' => null,
-                    'position_y' => null,
+                    'status' => 'active',
                     'created_at' => $now,
                     'updated_at' => $now,
                 ], $fresh),
             ));
+
+            // A bulk insert fires no model events, so the batch is logged
+            // as one entry naming its range.
+            app(AuditLogger::class)->log('workstations added', 'Workspace', $floor, [], [
+                'count' => count($fresh),
+                'first' => $fresh[0],
+                'last' => $fresh[count($fresh) - 1],
+            ], $floor->name);
         }
 
         return ['created' => count($fresh), 'skipped' => $taken];

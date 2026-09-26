@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\Permissions;
 use Illuminate\Support\Facades\Gate;
 use Modules\Access\Console\GrantSuperAdmin;
+use Modules\Access\Console\SyncDefaultRoles;
 use Modules\Access\Models\Role;
 use Modules\Access\Policies\RolePolicy;
 use Modules\Access\Policies\UserPolicy;
@@ -30,6 +31,7 @@ class AccessServiceProvider extends ModuleServiceProvider
      */
     protected array $commands = [
         GrantSuperAdmin::class,
+        SyncDefaultRoles::class,
     ];
 
     public function boot(): void

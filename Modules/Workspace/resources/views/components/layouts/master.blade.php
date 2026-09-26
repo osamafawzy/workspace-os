@@ -13,9 +13,7 @@
         <meta name="keywords" content="{{ $keywords ?? '' }}">
         <meta name="author" content="{{ $author ?? '' }}">
 
-        <!-- Fonts -->
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
+        {{-- No web fonts from outside: this runs on a network with no internet. --}}
 
         {{-- Vite CSS --}}
         {{-- {{ module_vite('build-workspace', 'resources/assets/sass/app.scss') }} --}}

@@ -2,7 +2,10 @@
 
 namespace Modules\PublicSite\Support;
 
+use App\Support\Branding;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
+use Modules\Workspace\Models\Building;
 use Modules\Workspace\Models\Floor;
 use Modules\Workspace\Models\Workstation;
 
@@ -42,11 +45,15 @@ class BuildingGeometry
      * no longer uses, and a public viewer walking in should not be sent to a
      * storey nobody works on.
      *
+     * Only one building's floors: the scene stacks floors by level, and two
+     * buildings' first floors are not one on top of the other.
+     *
      * @return Collection<int, Floor>
      */
-    public static function floors(): Collection
+    public static function floors(?Building $building = null): Collection
     {
         return Floor::query()
+            ->when($building, fn ($query) => $query->where('building_id', $building->getKey()))
             ->active()
             ->inBuildingOrder()
             ->withCount([
@@ -57,13 +64,28 @@ class BuildingGeometry
     }
 
     /**
+     * The buildings worth showing: the ones with at least one active floor.
+     *
+     * @return Collection<int, Building>
+     */
+    public static function buildings(): Collection
+    {
+        return Building::query()
+            ->whereHas('floors', fn ($query) => $query->active())
+            ->with('site')
+            ->orderBy('site_id')
+            ->orderBy('name')
+            ->get();
+    }
+
+    /**
      * @param  Collection<int, Floor>  $floors
      * @return array<string, mixed>
      */
     public static function forScene(Collection $floors): array
     {
         return [
-            'name' => config('app.name'),
+            'name' => app(Branding::class)->name(),
             'floors' => $floors->map(fn (Floor $floor): array => [
                 'id' => $floor->getKey(),
                 'name' => $floor->name,
@@ -110,15 +132,21 @@ class BuildingGeometry
      */
     public static function describe(Collection $desks, ?Floor $floor = null): array
     {
+        // The record reads through the area, port, switch and VLAN; loaded
+        // once for the whole floor rather than per desk.
+        $desks = EloquentCollection::make($desks->all())->loadMissing([...Workstation::DETAIL_EAGER_LOADS, 'mapObject']);
+
         return $desks->map(fn (Workstation $desk): array => [
             'id' => $desk->getKey(),
             'name' => $desk->name,
             'floor' => ($floor ?? $desk->floor)?->name,
             // Null for a desk that has not been put on the plan yet. It still
             // gets a modal — it exists, it just has no dot to click.
-            'x' => $desk->position_x !== null ? (float) $desk->position_x : null,
-            'y' => $desk->position_y !== null ? (float) $desk->position_y : null,
-            'groups' => $desk->detailGroups(),
+            // Percentages of the floor, from the desk's map object in metres.
+            'x' => $desk->planPosition()[0] ?? null,
+            'y' => $desk->planPosition()[1] ?? null,
+            // Only the fields the public site may show. See PUBLIC_DETAILS.
+            'groups' => $desk->detailGroups(public: true),
         ])->values()->all();
     }
 }

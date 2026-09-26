@@ -141,7 +141,8 @@ php artisan storage:link
 ```
 
 This makes `public\storage` a symlink to `storage\app\public`, which is how the
-uploaded floor plan drawings become reachable over HTTP. It is deliberately not
+uploaded floor plan drawings — and the company logo from Settings → Company —
+become reachable over HTTP. It is deliberately not
 in the copy — `.gitignore` lists `/public/storage` because it is created per
 machine.
 
@@ -230,6 +231,9 @@ Sign in at `/admin` with:
 admin@workspace.test / password
 ```
 
+Migrating also creates the five default roles — Super Admin, IT Admin, IT
+Engineer, IT Technician, Viewer — and the settings, lookup and audit log tables.
+
 ### 8b. Bring the old database with you
 
 Do this if the old machine has floors, desks or patching records worth keeping.
@@ -291,7 +295,8 @@ php artisan optimize:clear
 php artisan test
 ```
 
-135 tests. They run against an in-memory SQLite database, so they need the
+Over 200 tests, including one that fails if any page would load something
+from the internet. They run against an in-memory SQLite database, so they need the
 `pdo_sqlite` and `sqlite3` extensions but nothing from your MySQL setup — if
 they pass, PHP itself is correctly configured.
 
@@ -381,7 +386,8 @@ Most of these are on by default in XAMPP. To enable one, open
 |---|---|
 | `pdo_mysql`, `mysqli` | the database |
 | `mbstring`, `openssl`, `tokenizer`, `ctype`, `fileinfo`, `filter`, `session` | Laravel itself |
-| `curl`, `zip` | Composer |
+| `curl`, `zip` | Composer, and reading and writing Excel files |
+| `xmlreader` | importing Excel (.xlsx) files |
 | `xml`, `dom`, `simplexml` | Laravel and PHPUnit |
 | `gd` | image handling behind the plan upload |
 | `bcmath` | Laravel helpers |

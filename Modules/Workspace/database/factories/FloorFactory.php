@@ -3,6 +3,7 @@
 namespace Modules\Workspace\Database\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Modules\Workspace\Models\Building;
 use Modules\Workspace\Models\Floor;
 
 /** @extends Factory<Floor> */
@@ -12,14 +13,17 @@ class FloorFactory extends Factory
 
     public function definition(): array
     {
-        // `level` is unique in the schema, so it has to be a sequence rather
-        // than a random draw — random integers collide and make tests flaky
-        // for reasons that have nothing to do with what they are testing.
+        // `level` is unique within a building, so it has to be a sequence
+        // rather than a random draw — random integers collide and make tests
+        // flaky for reasons that have nothing to do with what they test.
         static $level = 0;
 
         $current = $level++;
 
         return [
+            // Floors made in one test share a building, the way floors in the
+            // real thing do, unless a test asks for another one.
+            'building_id' => fn (): int => Building::query()->orderBy('id')->value('id') ?? Building::factory()->create()->id,
             'name' => "Floor {$current}",
             'level' => $current,
             'width_m' => 60,

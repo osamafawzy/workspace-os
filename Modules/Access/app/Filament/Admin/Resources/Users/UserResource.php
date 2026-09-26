@@ -3,10 +3,9 @@
 namespace Modules\Access\Filament\Admin\Resources\Users;
 
 use App\Models\User;
-use BackedEnum;
+use App\Support\Navigation\HasConfigurableNavigation;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Modules\Access\Filament\Admin\Resources\Users\Pages\CreateUser;
@@ -23,15 +22,13 @@ use Modules\Access\Filament\Admin\Resources\Users\Tables\UsersTable;
  */
 class UserResource extends Resource
 {
+    use HasConfigurableNavigation;
+
     protected static ?string $model = User::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedUsers;
+    protected static string $navigationKey = 'user-permission';
 
     protected static ?string $recordTitleAttribute = 'name';
-
-    protected static ?int $navigationSort = 10;
-
-    protected static string|\UnitEnum|null $navigationGroup = 'Access';
 
     public static function form(Schema $schema): Schema
     {

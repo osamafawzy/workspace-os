@@ -38,7 +38,7 @@ class FloorPlanPermissionsTest extends TestCase
         $this->actingAs(User::factory()->withPermissions('floors.view')->create())
             ->get("/admin/floors/{$this->floor->getKey()}/plan")
             ->assertSuccessful()
-            ->assertSee('You can look at this plan but not rearrange it');
+            ->assertSee('floorMap(', escape: false);
     }
 
     public function test_the_plan_is_closed_without_view_permission(): void
@@ -48,39 +48,51 @@ class FloorPlanPermissionsTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_a_viewer_cannot_move_a_desk_even_by_calling_the_method(): void
+    /** @return list<array<string, mixed>> the desk placed at 12 m, 8 m */
+    protected function deskOnTheMap(): array
+    {
+        return [[
+            'id' => null, 'type' => 'workstation', 'workstation_id' => $this->desk->getKey(),
+            'x' => 12, 'y' => 8, 'z' => 0, 'width' => 1.4, 'depth' => 1.5, 'height' => 0.75, 'rotation' => 0,
+        ]];
+    }
+
+    public function test_a_viewer_cannot_change_the_map_even_by_calling_the_method(): void
     {
         $this->actingAs(User::factory()->withPermissions('floors.view')->create());
 
         Livewire::test(FloorPlan::class, ['record' => $this->floor->getKey()])
-            ->call('place', $this->desk->getKey(), 40, 40)
+            ->call('saveMap', 0, $this->deskOnTheMap())
             ->assertForbidden();
 
-        $this->assertNull($this->desk->refresh()->position_x);
+        $this->assertFalse($this->desk->refresh()->isPlaced());
     }
 
-    public function test_a_viewer_cannot_fill_arrange_or_clear(): void
-    {
-        $this->actingAs(User::factory()->withPermissions('floors.view')->create());
-
-        foreach ([['fillArea', 0, 0, 50, 50, 1, 1], ['autoArrange'], ['clearPlacements']] as $call) {
-            Livewire::test(FloorPlan::class, ['record' => $this->floor->getKey()])
-                ->call(...$call)
-                ->assertForbidden();
-        }
-
-        $this->assertNull($this->desk->refresh()->position_x);
-    }
-
-    public function test_the_arrange_permission_lets_desks_move(): void
+    public function test_the_arrange_permission_lets_the_map_be_saved(): void
     {
         $this->actingAs(User::factory()->withPermissions('floors.view', 'floors.arrange')->create());
 
         Livewire::test(FloorPlan::class, ['record' => $this->floor->getKey()])
-            ->call('place', $this->desk->getKey(), 40, 40)
+            ->call('saveMap', 0, $this->deskOnTheMap())
             ->assertSuccessful();
 
-        $this->assertEquals(40, $this->desk->refresh()->position_x);
+        $this->assertSame(12.0, $this->desk->refresh()->mapObject->x);
+    }
+
+    public function test_creating_a_desk_from_the_map_needs_both_arrange_and_create(): void
+    {
+        $this->actingAs(User::factory()->withPermissions('floors.view', 'floors.arrange')->create());
+
+        Livewire::test(FloorPlan::class, ['record' => $this->floor->getKey()])
+            ->call('createDesk', 'WS-NEW')
+            ->assertForbidden();
+
+        $this->actingAs(User::factory()->withPermissions('floors.view', 'floors.arrange', 'workstations.create')->create());
+
+        Livewire::test(FloorPlan::class, ['record' => $this->floor->getKey()])
+            ->call('createDesk', 'WS-NEW');
+
+        $this->assertDatabaseHas('workstations', ['name' => 'WS-NEW']);
     }
 
     public function test_a_viewer_reads_desk_details_but_cannot_save_them(): void

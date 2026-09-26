@@ -10,6 +10,7 @@ use Modules\Workspace\Filament\Admin\Resources\Floors\Pages\CreateFloor;
 use Modules\Workspace\Filament\Admin\Resources\Floors\Pages\EditFloor;
 use Modules\Workspace\Filament\Admin\Resources\Floors\Pages\ListFloors;
 use Modules\Workspace\Filament\Admin\Resources\Floors\RelationManagers\WorkstationsRelationManager;
+use Modules\Workspace\Models\Building;
 use Modules\Workspace\Models\Floor;
 use Modules\Workspace\Models\Workstation;
 use Tests\TestCase;
@@ -54,8 +55,11 @@ class FloorResourceTest extends TestCase
 
     public function test_a_floor_can_be_created(): void
     {
+        $building = Building::factory()->create();
+
         Livewire::test(CreateFloor::class)
             ->fillForm([
+                'building_id' => $building->getKey(),
                 'name' => 'Third Floor',
                 'level' => 3,
                 'is_active' => true,
@@ -63,7 +67,41 @@ class FloorResourceTest extends TestCase
             ->call('create')
             ->assertHasNoFormErrors();
 
-        $this->assertDatabaseHas('floors', ['name' => 'Third Floor', 'level' => 3]);
+        $this->assertDatabaseHas('floors', ['building_id' => $building->id, 'name' => 'Third Floor', 'level' => 3]);
+    }
+
+    public function test_a_floor_needs_a_building(): void
+    {
+        Livewire::test(CreateFloor::class)
+            ->fillForm(['building_id' => null, 'name' => 'Third Floor', 'level' => 3])
+            ->call('create')
+            ->assertHasFormErrors(['building_id' => 'required']);
+    }
+
+    /** With a single building there is nothing to choose, so it is chosen. */
+    public function test_the_only_building_is_picked_for_you(): void
+    {
+        $building = Building::factory()->create();
+
+        Livewire::test(CreateFloor::class)
+            ->assertSchemaStateSet(['building_id' => $building->getKey()]);
+    }
+
+    public function test_name_and_level_are_only_unique_within_a_building(): void
+    {
+        $tower = Building::factory()->create();
+        $annex = Building::factory()->create();
+        Floor::factory()->for($tower)->create(['name' => 'First Floor', 'level' => 1]);
+
+        Livewire::test(CreateFloor::class)
+            ->fillForm(['building_id' => $annex->getKey(), 'name' => 'First Floor', 'level' => 1])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        Livewire::test(CreateFloor::class)
+            ->fillForm(['building_id' => $tower->getKey(), 'name' => 'First Floor', 'level' => 1])
+            ->call('create')
+            ->assertHasFormErrors(['name' => 'unique', 'level' => 'unique']);
     }
 
     public function test_a_floor_requires_a_name_and_a_level(): void

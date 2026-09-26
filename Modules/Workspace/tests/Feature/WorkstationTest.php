@@ -34,9 +34,8 @@ class WorkstationTest extends TestCase
             'id' => $desk->id,
             'floor_id' => $floor->id,
             'name' => 'A-01',
-            'position_x' => null,
-            'position_y' => null,
         ]);
+        $this->assertFalse($desk->isPlaced());
     }
 
     public function test_names_are_unique_within_a_floor(): void
@@ -60,15 +59,24 @@ class WorkstationTest extends TestCase
         $this->assertSame(2, Workstation::query()->where('name', 'A-01')->count());
     }
 
-    public function test_a_workstation_is_placed_only_when_both_coordinates_are_set(): void
+    public function test_a_workstation_is_placed_when_it_has_an_object_on_the_map(): void
     {
         $unplaced = Workstation::factory()->create();
-        $halfDragged = Workstation::factory()->create(['position_x' => 12.5]);
         $placed = Workstation::factory()->placed(12.5, 40.0)->create();
 
         $this->assertFalse($unplaced->isPlaced());
-        $this->assertFalse($halfDragged->isPlaced());
         $this->assertTrue($placed->isPlaced());
+        $this->assertSame('workstation', $placed->mapObject->type);
+    }
+
+    public function test_deleting_a_desk_takes_it_off_the_map(): void
+    {
+        $desk = Workstation::factory()->placed()->create();
+        $object = $desk->mapObject;
+
+        $desk->delete();
+
+        $this->assertModelMissing($object);
     }
 
     public function test_the_placed_and_unplaced_scopes_partition_the_desks(): void
@@ -84,8 +92,7 @@ class WorkstationTest extends TestCase
     {
         $desk = Workstation::factory()->placed(33.33, 66.67)->create()->fresh();
 
-        $this->assertSame(33.33, $desk->position_x);
-        $this->assertSame(66.67, $desk->position_y);
+        $this->assertSame([33.33, 66.67], $desk->planPosition());
     }
 
     public function test_the_display_label_names_the_floor_the_desk_is_on(): void

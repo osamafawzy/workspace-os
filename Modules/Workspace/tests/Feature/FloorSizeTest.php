@@ -4,6 +4,7 @@ namespace Modules\Workspace\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Workspace\Actions\ArrangeWorkstations;
+use Modules\Workspace\Models\Building;
 use Modules\Workspace\Models\Floor;
 use Modules\Workspace\Models\Workstation;
 use Tests\TestCase;
@@ -14,7 +15,7 @@ class FloorSizeTest extends TestCase
 
     public function test_a_floor_has_dimensions_with_sensible_defaults(): void
     {
-        $floor = Floor::query()->create(['name' => 'Plain', 'level' => 40]);
+        $floor = Floor::query()->create(['building_id' => Building::factory()->create()->id, 'name' => 'Plain', 'level' => 40]);
 
         $this->assertSame(60.0, $floor->refresh()->width_m);
         $this->assertSame(40.0, $floor->depth_m);
@@ -63,11 +64,11 @@ class FloorSizeTest extends TestCase
         $this->assertSame(300, $placed);
         $this->assertSame(0, $floor->workstations()->unplaced()->count());
 
-        foreach ($floor->workstations()->placed()->get() as $desk) {
-            $this->assertGreaterThanOrEqual(0, $desk->position_x);
-            $this->assertLessThanOrEqual(100, $desk->position_x);
-            $this->assertGreaterThanOrEqual(0, $desk->position_y);
-            $this->assertLessThanOrEqual(100, $desk->position_y);
+        foreach ($floor->mapObjects()->get() as $object) {
+            $this->assertGreaterThanOrEqual(0, $object->x);
+            $this->assertLessThanOrEqual(60, $object->x);
+            $this->assertGreaterThanOrEqual(0, $object->y);
+            $this->assertLessThanOrEqual(40, $object->y);
         }
     }
 
@@ -90,8 +91,7 @@ class FloorSizeTest extends TestCase
             app(ArrangeWorkstations::class)->handle($floor);
         }
 
-        $columnsOn = fn (Floor $floor): int => $floor->workstations()
-            ->placed()->distinct()->count('position_x');
+        $columnsOn = fn (Floor $floor): int => $floor->mapObjects()->distinct()->count('x');
 
         // The long room gets more columns than the deep one, which is the whole
         // point of taking the aspect ratio into account.
@@ -108,7 +108,7 @@ class FloorSizeTest extends TestCase
 
         app(ArrangeWorkstations::class)->handle($floor);
 
-        $this->assertSame(11.0, $settled->refresh()->position_x);
-        $this->assertNull($elsewhere->refresh()->position_x);
+        $this->assertSame([11.0, 89.0], $settled->refresh()->planPosition());
+        $this->assertFalse($elsewhere->refresh()->isPlaced());
     }
 }

@@ -2,10 +2,9 @@
 
 namespace Modules\Access\Filament\Admin\Resources\Roles;
 
-use BackedEnum;
+use App\Support\Navigation\HasConfigurableNavigation;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Modules\Access\Filament\Admin\Resources\Roles\Pages\CreateRole;
 use Modules\Access\Filament\Admin\Resources\Roles\Pages\EditRole;
@@ -19,15 +18,13 @@ use Modules\Access\Models\Role;
  */
 class RoleResource extends Resource
 {
+    use HasConfigurableNavigation;
+
     protected static ?string $model = Role::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedShieldCheck;
+    protected static string $navigationKey = 'roles';
 
     protected static ?string $recordTitleAttribute = 'name';
-
-    protected static ?int $navigationSort = 20;
-
-    protected static string|\UnitEnum|null $navigationGroup = 'Access';
 
     public static function form(Schema $schema): Schema
     {
