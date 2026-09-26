@@ -4,6 +4,7 @@ namespace Modules\Assets\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 use Modules\Assets\Enums\AssetCondition;
 use Modules\Employees\Models\Employee;
 
@@ -15,6 +16,10 @@ use Modules\Employees\Models\Employee;
  * @property string $serial_number
  * @property string|null $asset_tag
  * @property string|null $computer_name
+ * @property string|null $ram
+ * @property string|null $owner
+ * @property string|null $lob
+ * @property Carbon|null $delivery_date
  * @property string|null $employee_oid
  * @property AssetCondition $condition
  * @property string|null $notes
@@ -30,6 +35,10 @@ class ReleaseBatchItem extends Model
         'serial_number',
         'asset_tag',
         'computer_name',
+        'ram',
+        'owner',
+        'lob',
+        'delivery_date',
         'employee_oid',
         'condition',
         'notes',
@@ -43,6 +52,7 @@ class ReleaseBatchItem extends Model
     {
         return [
             'condition' => AssetCondition::class,
+            'delivery_date' => 'date',
             'findings' => 'array',
         ];
     }
@@ -52,7 +62,7 @@ class ReleaseBatchItem extends Model
         static::saving(function (ReleaseBatchItem $item): void {
             $item->serial_number = trim((string) $item->serial_number);
 
-            foreach (['asset_tag', 'computer_name', 'employee_oid'] as $field) {
+            foreach (['asset_tag', 'computer_name', 'employee_oid', 'ram', 'owner', 'lob'] as $field) {
                 $item->{$field} = filled($item->{$field}) ? trim((string) $item->{$field}) : null;
             }
 

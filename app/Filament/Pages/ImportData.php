@@ -52,6 +52,16 @@ class ImportData extends Page implements HasTable
     #[Url]
     public ?int $batch = null;
 
+    /**
+     * Defaults for this importer's own option fields, so a screen can send
+     * somebody here with the answer already filled in — which release batch
+     * these rows belong to, for instance.
+     *
+     * @var array<string, mixed>|null
+     */
+    #[Url]
+    public ?array $options = null;
+
     /** @var array<string, mixed>|null */
     public ?array $data = [];
 
@@ -59,9 +69,15 @@ class ImportData extends Page implements HasTable
     {
         $this->authorizeImport();
 
+        $importer = $this->importerInstance();
+        $names = collect($importer->optionFields())->map(fn ($field): string => $field->getName())->all();
+
         $this->form->fill([
             'existing' => ImportRunner::EXISTING_SKIP,
-            ...$this->importerInstance()->defaultOptions(),
+            ...$importer->defaultOptions(),
+            // Only this importer's own options, and the form still decides
+            // whether what arrived is a choice this user may make.
+            ...array_intersect_key($this->options ?? [], array_flip($names)),
         ]);
 
         if ($this->batch !== null) {
@@ -173,6 +189,12 @@ class ImportData extends Page implements HasTable
         Notification::make()->title('File checked')->body('Review the rows below, then import.')->success()->send();
     }
 
+    /** Where the importer sends people once its rows are in. */
+    public function returnUrl(): ?string
+    {
+        return $this->importerInstance()->returnUrl($this->batchRecord()?->options ?? []);
+    }
+
     public function table(Table $table): Table
     {
         // Personal data never goes on the preview; it waits encrypted.
@@ -272,8 +294,8 @@ class ImportData extends Page implements HasTable
             Action::make('back')
                 ->label('Back to the list')
                 ->color('gray')
-                ->visible(fn (): bool => $this->batchRecord()?->status === ImportBatch::IMPORTED && $this->importerInstance()->returnUrl() !== null)
-                ->url(fn (): ?string => $this->importerInstance()->returnUrl()),
+                ->visible(fn (): bool => $this->batchRecord()?->status === ImportBatch::IMPORTED && $this->returnUrl() !== null)
+                ->url(fn (): ?string => $this->returnUrl()),
         ];
     }
 

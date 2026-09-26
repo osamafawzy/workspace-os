@@ -99,7 +99,7 @@ class WorkstationImporter extends Importer
         return ['create_missing' => true, 'existing' => ImportRunner::EXISTING_SKIP];
     }
 
-    public function returnUrl(): ?string
+    public function returnUrl(array $options = []): ?string
     {
         return WorkstationResource::getUrl('index');
     }

@@ -2,12 +2,14 @@
 
 namespace Modules\Assets\Filament\Admin\Resources\ReleaseBatches\RelationManagers;
 
+use App\Filament\Pages\ImportData;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -24,6 +26,7 @@ use Illuminate\Database\Eloquent\Model;
 use Modules\Assets\Enums\AssetCondition;
 use Modules\Assets\Filament\Admin\Pages\PrintHandoverForm;
 use Modules\Assets\Filament\Admin\Resources\Assets\AssetResource;
+use Modules\Assets\Imports\ReleaseFormImporter;
 use Modules\Assets\Models\ReleaseBatch;
 use Modules\Assets\Models\ReleaseBatchItem;
 use Modules\Employees\Models\Employee;
@@ -59,7 +62,11 @@ class ItemsRelationManager extends RelationManager
                 TextInput::make('computer_name')->label('Computer Name')->maxLength(100),
                 TextInput::make('employee_oid')->label('Employee OID')->maxLength(50)->helperText('Leave empty to put it into stock.'),
                 Select::make('condition')->label('Condition')->options(AssetCondition::class)->default(AssetCondition::New)->required(),
-                Textarea::make('notes')->label('Notes')->rows(1),
+                TextInput::make('ram')->label('RAM')->maxLength(60)->placeholder('16 GB'),
+                TextInput::make('owner')->label('Owner')->maxLength(60),
+                TextInput::make('lob')->label('LOB')->maxLength(100),
+                DatePicker::make('delivery_date')->label('Delivery Date'),
+                Textarea::make('notes')->label('Notes')->rows(1)->columnSpanFull(),
             ]);
     }
 
@@ -81,6 +88,11 @@ class ItemsRelationManager extends RelationManager
                         ? ($this->employeeNames()[mb_strtolower($record->employee_oid)] ?? 'Not found')
                         : null),
                 TextColumn::make('condition')->label('Condition')->badge(),
+                // What the Release Data Form carries beyond the labels.
+                TextColumn::make('ram')->label('RAM')->placeholder('-')->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('owner')->label('Owner')->placeholder('-')->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('lob')->label('LOB')->placeholder('-')->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('delivery_date')->label('Delivery')->date()->placeholder('-')->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('findings')
                     ->label('Checks')
                     ->state(fn (ReleaseBatchItem $record): array => $record->findings === null
@@ -116,6 +128,16 @@ class ItemsRelationManager extends RelationManager
                     ->createAnother()
                     ->before(fn (CreateAction $action) => $this->ensureRoom($action)),
 
+                Action::make('upload')
+                    ->label('Upload the release form')
+                    ->icon(Heroicon::OutlinedArrowUpTray)
+                    ->color('gray')
+                    ->hidden(fn (): bool => $this->isReadOnly())
+                    ->url(fn (): string => ImportData::getUrl([
+                        'importer' => ReleaseFormImporter::key(),
+                        'options' => ['release_batch_id' => $this->getOwnerRecord()->getKey()],
+                    ])),
+
                 Action::make('paste')
                     ->label('Paste rows')
                     ->icon(Heroicon::OutlinedClipboardDocumentList)
@@ -138,7 +160,7 @@ class ItemsRelationManager extends RelationManager
                 ]),
             ])
             ->emptyStateHeading('No rows yet')
-            ->emptyStateDescription('Add the new assets one by one, or paste them from a spreadsheet.');
+            ->emptyStateDescription('Add the new assets one by one, paste them from a spreadsheet, or upload the release form.');
     }
 
     /**

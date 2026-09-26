@@ -87,9 +87,11 @@
                     <th>Serial number</th>
                     <th>Asset tag</th>
                     <th>Computer name</th>
+                    <th>RAM</th>
                     <th>OID</th>
                     <th>Employee</th>
                     <th>Condition</th>
+                    <th>Delivery</th>
                     <th>{{ $draft ? 'Checks' : 'Handover form' }}</th>
                 </tr>
             </thead>
@@ -100,9 +102,11 @@
                         <td class="mono">{{ $item->serial_number }}</td>
                         <td class="mono">{{ $item->asset_tag }}</td>
                         <td>{{ $item->computer_name }}</td>
+                        <td>{{ $item->ram }}</td>
                         <td>{{ $item->employee_oid ?? 'Stock' }}</td>
                         <td dir="auto">{{ $item->employee?->name ?? ($item->employee_oid ? ($names[mb_strtolower($item->employee_oid)] ?? '—') : '') }}</td>
                         <td>{{ $item->condition->getLabel() }}</td>
+                        <td>{{ $item->delivery_date?->format('Y-m-d') }}</td>
                         @if ($draft)
                             <td class="{{ $item->hasErrors() ? 'rb-problem' : '' }}">
                                 {{ $item->findings === null ? 'Not checked' : (collect($item->allFindings())->where('level', 'error')->pluck('text')->implode(' ') ?: 'OK') }}

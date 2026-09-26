@@ -85,8 +85,14 @@ abstract class Importer
     /** Called before a run of checks, so an importer can load its lookups once. */
     public function prepare(array $options): void {}
 
-    /** Where to send somebody once the import is done. */
-    public function returnUrl(): ?string
+    /**
+     * Where to send somebody once the import is done. The options the import
+     * ran with are given, so an importer that imported into one record — a
+     * release batch, say — can send them back to it.
+     *
+     * @param  array<string, mixed>  $options
+     */
+    public function returnUrl(array $options = []): ?string
     {
         return null;
     }

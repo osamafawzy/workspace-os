@@ -19,6 +19,7 @@ use Modules\Assets\Filament\Admin\Resources\ReleaseBatches\ReleaseBatchResource;
 use Modules\Assets\Filament\Admin\Support\EmployeeAssetsSection;
 use Modules\Assets\Imports\AssetImporter;
 use Modules\Assets\Imports\HeadsetImporter;
+use Modules\Assets\Imports\ReleaseFormImporter;
 use Modules\Assets\Models\Asset;
 use Modules\Assets\Models\AssetAssignment;
 use Modules\Assets\Models\AssetModel;
@@ -95,6 +96,7 @@ class AssetsServiceProvider extends ModuleServiceProvider
 
         Gate::policy(ReleaseBatch::class, ReleaseBatchPolicy::class);
         $this->app->make(Importers::class)->register(HeadsetImporter::class);
+        $this->app->make(Importers::class)->register(ReleaseFormImporter::class);
 
         Gate::define('assign-assets', fn (User $user): bool => $user->hasPermission('assignments.assign') && $user->hasPermission('assets.view'));
         Gate::define('return-assets', fn (User $user): bool => $user->hasPermission('assignments.return') && $user->hasPermission('assets.view'));

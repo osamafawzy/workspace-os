@@ -125,7 +125,7 @@ class EmployeeImporter extends Importer
         return ['create_missing' => true, 'existing' => ImportRunner::EXISTING_UPDATE];
     }
 
-    public function returnUrl(): ?string
+    public function returnUrl(array $options = []): ?string
     {
         return EmployeeResource::getUrl('index');
     }

@@ -112,7 +112,7 @@ class HeadsetImporter extends AssetImporter
         ];
     }
 
-    public function returnUrl(): ?string
+    public function returnUrl(array $options = []): ?string
     {
         return AddHeadsets::getUrl();
     }

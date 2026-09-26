@@ -624,6 +624,36 @@ release by default.
 - **Every import now reports this way:** duplicates are rows already in the
   application or repeated in the file.
 
+**The Release Data Form** (`/admin/import?importer=release-form`, or **Upload the
+release form** on a draft's New Data Table) fills a whole release from the
+office's own sheet. **Download template** is that form:
+
+| Serial | Employee_ID | Employee_Name | Mobile_No | Laptop_Name | Laptop_Model | RAM | Laptop_Service_Tag | Laptop_Owner | Account | LOB | Site | Delivery_Date | Emergency_Contact1 | Emergency_Contact2 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+
+- **Which release:** the rows go onto a **draft** batch, chosen on the upload
+  screen — the batch screen's own button fills it in. The batch's type, model,
+  site, location, account and dates are what the rows are released as, so start
+  the release first.
+- **Serial** is the line number in the sheet; the machine's serial is
+  **Laptop_Service_Tag**, and that is what the asset is created with.
+- **RAM**, **Laptop_Owner**, **LOB** and **Delivery_Date** belong to the
+  delivery rather than to the asset, so they are kept on the batch's row, shown
+  in the New Data Table and printed on the report.
+- **Laptop_Model**, **Account** and **Site** are read as a cross-check: a row
+  that disagrees with the release says so on the preview, and the release
+  decides. **Employee_ID** decides who a laptop is for; **Employee_Name**,
+  **Mobile_No** and the two emergency contacts are checked against the employee
+  record the handover form will print — a name or mobile that disagrees, or
+  contacts that are missing from the record, is a warning. Nothing is written to
+  the employees: the OID must already be one.
+- **Re-uploading a corrected form** onto the same release updates its rows,
+  matched by service tag, rather than adding them twice (empty cells leave what
+  is there alone).
+- Rows are checked exactly as typed ones are — serials already in the register,
+  tags on another asset, OIDs that are not employees or have left — and then the
+  usual **Check / Print / Release** buttons do the rest.
+
 ## Reports (Phase 8)
 
 Reports → **All Reports** (`/admin/reports`) lists every report the signed-in

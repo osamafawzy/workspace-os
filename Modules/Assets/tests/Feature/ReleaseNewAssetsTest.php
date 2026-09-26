@@ -2,9 +2,15 @@
 
 namespace Modules\Assets\Tests\Feature;
 
+use App\Filament\Pages\ImportData;
+use App\Models\ImportRow;
 use App\Models\User;
+use App\Support\Import\ImportRunner;
+use App\Support\Spreadsheet\Spreadsheet;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use Modules\Assets\Actions\CheckReleaseBatch;
@@ -16,6 +22,7 @@ use Modules\Assets\Filament\Admin\Resources\ReleaseBatches\Pages\EditReleaseBatc
 use Modules\Assets\Filament\Admin\Resources\ReleaseBatches\Pages\ViewReleaseBatch;
 use Modules\Assets\Filament\Admin\Resources\ReleaseBatches\RelationManagers\ItemsRelationManager;
 use Modules\Assets\Filament\Admin\Resources\ReleaseBatches\ReleaseBatchResource;
+use Modules\Assets\Imports\ReleaseFormImporter;
 use Modules\Assets\Models\Asset;
 use Modules\Assets\Models\AssetModel;
 use Modules\Assets\Models\AssetType;
@@ -239,6 +246,133 @@ class ReleaseNewAssetsTest extends TestCase
 
         $this->assertSame(2, $batch->fresh()->print_count);
         $this->assertDatabaseHas('audit_logs', ['action' => 'reprinted', 'record_label' => $batch->number]);
+    }
+
+    public function test_the_release_form_template_is_the_shape_of_the_form(): void
+    {
+        $file = app(ImportRunner::class)->template(app(ReleaseFormImporter::class), 'csv');
+        $rows = array_values(iterator_to_array(Spreadsheet::read($file->getFile()->getPathname(), 'template.csv')));
+
+        $this->assertSame([
+            'Serial', 'Employee_ID', 'Employee_Name', 'Mobile_No', 'Laptop_Name', 'Laptop_Model', 'RAM',
+            'Laptop_Service_Tag', 'Laptop_Owner', 'Account', 'LOB', 'Site', 'Delivery_Date',
+            'Emergency_Contact1', 'Emergency_Contact2',
+        ], $rows[0]);
+    }
+
+    public function test_a_release_form_fills_a_draft_with_its_rows(): void
+    {
+        $batch = $this->batch();
+        $batch->assetModel->manufacturer->update(['name' => 'Dell']);
+        Employee::factory()->create(['oid' => '7654321', 'name' => 'Sara Ali', 'mobile' => '01012345678']);
+        Asset::factory()->create(['serial_number' => 'OLD-1']);
+
+        $path = tempnam(sys_get_temp_dir(), 'rf').'.csv';
+        $handle = fopen($path, 'w');
+
+        foreach ([
+            ['Serial', 'Employee_ID', 'Employee_Name', 'Mobile_No', 'Laptop_Name', 'Laptop_Model', 'RAM', 'Laptop_Service_Tag', 'Laptop_Owner', 'Account', 'LOB', 'Site', 'Delivery_Date', 'Emergency_Contact1', 'Emergency_Contact2'],
+            ['1', '7654321', 'Sara Ali', '01012345678', 'ALX-LT-0001', 'Dell Latitude 5440', '16 GB', 'NEW-1', 'Concentrix', '', 'Customer Care', 'Alexandria', '2026-09-24', 'Mona Ali 01098765432', ''],
+            // No OID: into stock. And "Serial" is the line number, not a serial.
+            ['2', '', '', '', 'ALX-LT-0002', 'Dell Latitude 5440', '8 GB', 'NEW-2', 'Concentrix', '', 'Customer Care', 'Alexandria', '2026-09-24', '', ''],
+            // A name that disagrees with the OID, and a mobile that does too.
+            ['3', '7654321', 'Sarah Aly', '01000000000', 'ALX-LT-0003', 'Dell Latitude 5440', '16 GB', 'NEW-3', 'Concentrix', '', 'Customer Care', 'Alexandria', '2026-09-24', '', ''],
+            // Nobody has that OID, and the site is not the release's.
+            ['4', '9999999', 'Nobody', '', 'ALX-LT-0004', 'Dell Latitude 5440', '16 GB', 'NEW-4', 'Concentrix', '', 'Customer Care', 'Cairo', '2026-09-24', '', ''],
+            // Already in the register.
+            ['5', '', '', '', 'ALX-LT-0005', 'Dell Latitude 5440', '16 GB', 'OLD-1', 'Concentrix', '', 'Customer Care', 'Alexandria', '2026-09-24', '', ''],
+        ] as $row) {
+            fputcsv($handle, $row);
+        }
+
+        fclose($handle);
+
+        $runner = app(ImportRunner::class);
+        $importer = app(ReleaseFormImporter::class);
+        $checked = $runner->check($importer, $path, 'Release Data Form.csv', ['release_batch_id' => $batch->id], $this->engineer);
+
+        $this->assertSame(
+            [2 => ImportRow::NEW, 3 => ImportRow::NEW, 4 => ImportRow::NEW, 5 => ImportRow::INVALID, 6 => ImportRow::INVALID],
+            $checked->rows()->orderBy('row_number')->pluck('status', 'row_number')->all(),
+        );
+
+        $messages = fn (int $number): string => collect($checked->rows()->where('row_number', $number)->value('messages'))->pluck('text')->implode(' ');
+
+        $this->assertStringContainsString('goes into stock', $messages(3));
+        $this->assertStringContainsString('is Sara Ali, not "Sarah Aly"', $messages(4));
+        $this->assertStringContainsString('mobile on record is 01012345678', $messages(4));
+        $this->assertStringContainsString('No employee has OID 9999999', $messages(5));
+        $this->assertStringContainsString('Site on this release is Alexandria', $messages(5));
+        $this->assertStringContainsString('Serial OLD-1 is already in the register', $messages(6));
+        // The employee's own details are personal data and wait encrypted.
+        $stored = json_decode(DB::table('import_rows')->where('import_batch_id', $checked->id)->orderBy('row_number')->value('data'), true);
+
+        $this->assertStringStartsWith('sealed:', $stored['employee_name']);
+        $this->assertStringStartsWith('sealed:', $stored['employee_mobile']);
+        $this->assertStringStartsWith('sealed:', $stored['emergency_contact_1']);
+        $this->assertSame('7654321', $stored['employee_oid']);
+
+        $runner->import($checked, $importer);
+
+        $this->assertSame(3, $batch->items()->count());
+
+        $first = $batch->items()->where('serial_number', 'NEW-1')->firstOrFail();
+        $this->assertSame('7654321', $first->employee_oid);
+        $this->assertSame('ALX-LT-0001', $first->computer_name);
+        $this->assertSame('16 GB', $first->ram);
+        $this->assertSame('Concentrix', $first->owner);
+        $this->assertSame('Customer Care', $first->lob);
+        $this->assertSame('2026-09-24', $first->delivery_date->toDateString());
+        $this->assertNull($batch->items()->where('serial_number', 'NEW-2')->value('employee_oid'));
+
+        // The rows are the batch's own new data, so the checks and the release
+        // work on them as if they had been typed in.
+        $problems = app(CheckReleaseBatch::class)->handle($batch->fresh());
+        $this->assertSame(['employees' => 0, 'new' => 0, 'old' => 0], $problems);
+
+        // And a corrected form re-uploaded onto the same release updates its rows.
+        $again = tempnam(sys_get_temp_dir(), 'rf').'.csv';
+        file_put_contents($again, "Laptop_Service_Tag,RAM\nNEW-1,32 GB\n");
+
+        $second = $runner->check($importer, $again, 'again.csv', ['release_batch_id' => $batch->id], $this->engineer);
+        $runner->import($second, $importer);
+
+        $this->assertSame(3, $batch->items()->count());
+        $this->assertSame('32 GB', $batch->items()->where('serial_number', 'NEW-1')->value('ram'));
+    }
+
+    public function test_the_upload_only_ever_fills_a_draft_somebody_may_work_on(): void
+    {
+        $batch = $this->batch([['serial_number' => 'NEW-9']]);
+
+        // The batch screen sends people to the import with the release filled in.
+        Livewire::test(ItemsRelationManager::class, ['ownerRecord' => $batch, 'pageClass' => EditReleaseBatch::class])
+            ->assertActionHasUrl(TestAction::make('upload')->table(), ImportData::getUrl([
+                'importer' => 'release-form',
+                'options' => ['release_batch_id' => $batch->id],
+            ]));
+
+        // And the import screen opens with that release already chosen.
+        Livewire::test(ImportData::class, ['importer' => 'release-form', 'options' => ['release_batch_id' => $batch->id]])
+            ->assertFormSet(['release_batch_id' => $batch->id]);
+
+        $path = tempnam(sys_get_temp_dir(), 'rf').'.csv';
+        file_put_contents($path, "Laptop_Service_Tag\nNEW-10\n");
+
+        // An archived batch is a record: its rows cannot be added to.
+        app(ReleaseBatchAssets::class)->handle($batch, $this->engineer);
+        $this->assertTrue($batch->fresh()->isArchived());
+
+        $batch = $batch->fresh();
+        $checked = app(ImportRunner::class)->check(app(ReleaseFormImporter::class), $path, 'form.csv', ['release_batch_id' => $batch->id], $this->engineer);
+
+        $this->assertSame(ImportRow::INVALID, $checked->rows()->value('status'));
+        $this->assertStringContainsString('Choose a draft release', collect($checked->rows()->value('messages'))->pluck('text')->implode(' '));
+
+        // And somebody who may not stage a release cannot run the import at all.
+        $viewer = User::factory()->withPermissions('releases.view', 'assets.view')->create();
+        $this->assertFalse(app(ReleaseFormImporter::class)->authorize($viewer));
+        $this->assertTrue(app(ReleaseFormImporter::class)->authorize($this->engineer));
     }
 
     public function test_releasing_needs_its_own_permission_and_assigning(): void
