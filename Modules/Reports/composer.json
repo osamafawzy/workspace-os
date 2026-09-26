@@ -1,0 +1,23 @@
+{
+    "name": "workspace-os/reports",
+    "description": "Every report in one place: searchable, filterable, exportable and printable.",
+    "authors": [],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {}
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Reports\\": "app/",
+            "Modules\\Reports\\Database\\Factories\\": "database/factories/",
+            "Modules\\Reports\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Reports\\Tests\\": "tests/"
+        }
+    }
+}

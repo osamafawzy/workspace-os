@@ -1,0 +1,23 @@
+{
+    "name": "workspace-os/employees",
+    "description": "The people assets are handed to: employee records, emergency contacts and the Workday import.",
+    "authors": [],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {}
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Employees\\": "app/",
+            "Modules\\Employees\\Database\\Factories\\": "database/factories/",
+            "Modules\\Employees\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Employees\\Tests\\": "tests/"
+        }
+    }
+}

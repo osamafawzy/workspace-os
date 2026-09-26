@@ -1,0 +1,15 @@
+{
+    "name": "Employees",
+    "alias": "employees",
+    "description": "The people assets are handed to: employee records, emergency contacts and the Workday import.",
+    "keywords": [
+        "employees",
+        "workday",
+        "emergency-contacts"
+    ],
+    "priority": 0,
+    "providers": [
+        "Modules\\Employees\\Providers\\EmployeesServiceProvider"
+    ],
+    "files": []
+}

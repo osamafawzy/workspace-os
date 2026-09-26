@@ -1,0 +1,15 @@
+{
+    "name": "Audit",
+    "alias": "audit",
+    "description": "The record of who changed what, and when.",
+    "keywords": [
+        "audit",
+        "history",
+        "log"
+    ],
+    "priority": 0,
+    "providers": [
+        "Modules\\Audit\\Providers\\AuditServiceProvider"
+    ],
+    "files": []
+}

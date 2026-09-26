@@ -1,0 +1,15 @@
+{
+    "name": "Assets",
+    "alias": "assets",
+    "description": "The asset register: what the company owns, what it is, where it is and who holds it.",
+    "keywords": [
+        "assets",
+        "inventory",
+        "hardware"
+    ],
+    "priority": 0,
+    "providers": [
+        "Modules\\Assets\\Providers\\AssetsServiceProvider"
+    ],
+    "files": []
+}

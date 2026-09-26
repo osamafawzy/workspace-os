@@ -1,0 +1,15 @@
+{
+    "name": "Reports",
+    "alias": "reports",
+    "description": "Every report in one place: searchable, filterable, exportable and printable.",
+    "keywords": [
+        "reports",
+        "export",
+        "print"
+    ],
+    "priority": 0,
+    "providers": [
+        "Modules\\Reports\\Providers\\ReportsServiceProvider"
+    ],
+    "files": []
+}

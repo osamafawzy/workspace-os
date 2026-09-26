@@ -1,0 +1,23 @@
+{
+    "name": "workspace-os/assets",
+    "description": "The asset register: what the company owns, what it is, where it is and who holds it.",
+    "authors": [],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {}
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Assets\\": "app/",
+            "Modules\\Assets\\Database\\Factories\\": "database/factories/",
+            "Modules\\Assets\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Assets\\Tests\\": "tests/"
+        }
+    }
+}

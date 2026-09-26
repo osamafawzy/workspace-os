@@ -588,11 +588,39 @@ release by default.
 **Adding New Headsets Data** (`/admin/headsets`)
 - **One at a time:** pick the headset type, model, condition and place once,
   then scan serial after serial. **Save and add another** keeps everything but
-  the labels. A "Headset" type is created if no headset type exists yet.
-- **Bulk:** **Upload a spreadsheet** uses `HeadsetImporter`, which is the asset
-  import with the type chosen once on the upload screen (it must be a headset
-  type). It reports **Total / Successful / Duplicates / Failed**, and the error
-  report lists every row that didn't go in.
+  the labels — including the cord's model, but not its serial. A "Headset" type
+  is created if no headset type exists yet.
+- **The cord** it came with is kept on the headset itself — **Cord Model**,
+  **Cord S/N**, **Cord Status** — because that is how it is delivered, used and
+  thrown away. A cord serial belongs to one headset, is searchable like any
+  other serial, shows on the asset's page and in the Headsets report, and a
+  swap is written to the asset's history.
+- **Bulk:** **Upload a spreadsheet** uses `HeadsetImporter`, and its
+  **Download template** is the ops sheet itself:
+
+  | OID | Name | Headset Model | Headsets S/N | Headset Status | Cord Model | Cord S/N | Cord Status | Site | Received Date | Account |
+  |---|---|---|---|---|---|---|---|---|---|---|
+
+  The sheet's habits are taken as read:
+  - **A dash** (`-`, `n/a`, `none`…) means nothing is there, not a cord called "-".
+  - **The manufacturer is written into the model** — "Jabra BIZ 1500 Direct USB"
+    is a Jabra, model "BIZ 1500 Direct USB". A manufacturer already in the
+    catalogue is matched however many words its name is; otherwise the first
+    word is taken as the maker.
+  - **Headset Status** is one word for two things: "New" means Available and in
+    New condition, "Damaged" describes the condition and leaves where it is to
+    the OID. A word that is neither marks the row invalid and says so.
+  - **Site** by name or code ("ALX"), **Received Date** as the purchase date,
+    **Account** by name or code, created when missing if the option is on.
+  - **OID** decides who holds it; **Name** is the office's own cross-check, so a
+    name that disagrees is a warning on the preview and the OID wins. It is
+    personal data: it waits encrypted between the check and the import.
+  - **Cord S/N** is checked for being on another headset, or twice in the file.
+  - Files with the older asset headings ("Serial Number", "Manufacturer",
+    "Asset Tag", "Location", "Notes"…) still import: those columns are
+    understood, just left out of the template.
+- It reports **Total / Successful / Duplicates / Failed**, and the error report
+  lists every row that didn't go in.
 - **Every import now reports this way:** duplicates are rows already in the
   application or repeated in the file.
 
@@ -625,7 +653,7 @@ user may open, grouped under headings.
 | Assets | Returned Assets | every recorded return |
 | Assets | Non-Returned Assets | held by employees who have **left**, and days since they left. A working definition until the DIF MSA spec arrives |
 | Assets | Employee Assets | one row per employee: how many assets and which |
-| Assets | Headsets | assets of headset types |
+| Assets | Headsets | assets of headset types, with the cord each came with |
 | Assets | Movement History | every asset history event with before → after, and the reason given (filterable) |
 | Floors and network | Workstations | the full patching record; the search is Search Workstation's |
 | Floors and network | Floors | desks, desks on the map, and desks per status, per floor |

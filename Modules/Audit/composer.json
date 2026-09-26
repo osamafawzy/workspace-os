@@ -1,0 +1,23 @@
+{
+    "name": "workspace-os/audit",
+    "description": "The record of who changed what, and when.",
+    "authors": [],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {}
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Audit\\": "app/",
+            "Modules\\Audit\\Database\\Factories\\": "database/factories/",
+            "Modules\\Audit\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Audit\\Tests\\": "tests/"
+        }
+    }
+}
