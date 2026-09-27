@@ -6,9 +6,20 @@ use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
+use Modules\Assets\Filament\Admin\Resources\AssetTypes\Pages\ManageAssetTypes;
+use Modules\Assets\Filament\Admin\Resources\Manufacturers\Pages\ManageManufacturers;
+use Modules\Assets\Filament\Admin\Resources\UpdateReasons\Pages\ManageUpdateReasons;
+use Modules\Assets\Models\AssetType;
+use Modules\Assets\Models\Manufacturer;
+use Modules\Assets\Models\UpdateReason;
+use Modules\Settings\Filament\Admin\Resources\Accounts\Pages\ManageAccounts;
+use Modules\Settings\Filament\Admin\Resources\Departments\Pages\ManageDepartments;
 use Modules\Settings\Filament\Admin\Resources\Locations\Pages\ManageLocations;
 use Modules\Settings\Filament\Admin\Resources\Sites\Pages\ManageSites;
+use Modules\Settings\Models\Account;
+use Modules\Settings\Models\Department;
 use Modules\Settings\Models\Location;
+use Modules\Settings\Models\Lookup;
 use Modules\Settings\Models\Site;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -67,6 +78,52 @@ class LookupResourceTest extends TestCase
             ->assertHasActionErrors(['name' => 'unique']);
     }
 
+    public function test_a_code_is_refused_on_the_field_rather_than_by_the_database(): void
+    {
+        $this->actingAs(User::factory()->superAdmin()->create());
+        $cairo = Site::query()->create(['name' => 'Cairo Site', 'code' => 'CAI']);
+
+        // The case that brought this up: a second site given a code another
+        // site already has. It is a message on the field, not a 500.
+        Livewire::test(ManageSites::class)
+            ->callAction('create', ['name' => 'Cairo Site 4', 'code' => 'CAI', 'city' => 'Cairo'])
+            ->assertHasActionErrors(['code' => 'unique']);
+
+        $this->assertSame(1, Site::query()->count());
+
+        // Editing the site that already has the code is not a clash with itself.
+        Livewire::test(ManageSites::class)
+            ->callTableAction('edit', $cairo, ['name' => 'Cairo Site', 'code' => 'CAI', 'city' => 'Cairo'])
+            ->assertHasNoTableActionErrors();
+
+        // And a code is still optional, as many times as you like.
+        Livewire::test(ManageSites::class)
+            ->callAction('create', ['name' => 'Alexandria Site'])
+            ->assertHasNoActionErrors();
+
+        Livewire::test(ManageSites::class)
+            ->callAction('create', ['name' => 'Giza Site'])
+            ->assertHasNoActionErrors();
+
+        $this->assertSame(3, Site::query()->count());
+    }
+
+    public function test_a_location_code_is_only_unique_within_its_site(): void
+    {
+        $this->actingAs(User::factory()->superAdmin()->create());
+        $alexandria = Site::query()->create(['name' => 'Alexandria Site']);
+        $cairo = Site::query()->create(['name' => 'Cairo Site']);
+        Location::query()->create(['name' => 'Store Room', 'site_id' => $alexandria->id, 'code' => 'ST']);
+
+        Livewire::test(ManageLocations::class)
+            ->callAction('create', ['name' => 'Store Room', 'site_id' => $cairo->id, 'code' => 'ST'])
+            ->assertHasNoActionErrors();
+
+        Livewire::test(ManageLocations::class)
+            ->callAction('create', ['name' => 'Second Store', 'site_id' => $alexandria->id, 'code' => 'ST'])
+            ->assertHasActionErrors(['code' => 'unique']);
+    }
+
     public function test_a_location_name_is_only_unique_within_its_site(): void
     {
         $this->actingAs(User::factory()->superAdmin()->create());
@@ -81,6 +138,36 @@ class LookupResourceTest extends TestCase
         Livewire::test(ManageLocations::class)
             ->callAction('create', ['name' => 'Store Room', 'site_id' => $alexandria->id])
             ->assertHasActionErrors(['name' => 'unique']);
+    }
+
+    /**
+     * Every list whose code the database insists is unique says so on the form.
+     *
+     * @return array<string, array{0: class-string<Lookup>, 1: class-string}>
+     */
+    public static function codedLists(): array
+    {
+        return [
+            'sites' => [Site::class, ManageSites::class],
+            'accounts' => [Account::class, ManageAccounts::class],
+            'departments' => [Department::class, ManageDepartments::class],
+            'manufacturers' => [Manufacturer::class, ManageManufacturers::class],
+            'asset types' => [AssetType::class, ManageAssetTypes::class],
+            'update reasons' => [UpdateReason::class, ManageUpdateReasons::class],
+        ];
+    }
+
+    #[DataProvider('codedLists')]
+    public function test_every_list_with_a_unique_code_checks_it_on_the_form(string $model, string $page): void
+    {
+        $this->actingAs(User::factory()->superAdmin()->create());
+        $model::query()->create(['name' => 'The first one', 'code' => 'DUP', 'is_active' => true]);
+
+        Livewire::test($page)
+            ->callAction('create', ['name' => 'The second one', 'code' => 'DUP', 'is_active' => true])
+            ->assertHasActionErrors(['code' => 'unique']);
+
+        $this->assertSame(1, $model::query()->count());
     }
 
     public function test_a_site_with_locations_cannot_be_deleted(): void

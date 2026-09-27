@@ -229,6 +229,21 @@ workstation" button stays disabled until at least one floor exists.
 
 Deleting a floor deletes its desks; the confirmation says how many.
 
+**Anything that has to be unique is checked on the form.** A serial, an asset
+tag, an OID, an employee number, a site's name and its **code**, a desk's ID on
+its floor, a switch's number in its building, a port's name on its switch, a
+VLAN's number at its site, a model's name for its manufacturer, a location's
+name and code within its site: each is refused on the field, with a sentence,
+before the database is asked. Imports say the same thing on the preview, row by
+row, and check the rows against each other as well as against what is already
+there.
+
+Under all of that, `App\Exceptions\DuplicateValue` turns a unique-constraint
+violation that still reaches the database — two people saving the same code at
+the same moment, or a path nobody thought of — into the same kind of validation
+error, naming the value and the field. On the command line it stays a raw error,
+where a seeder's stack trace is what somebody wants.
+
 ## The floor map (Phase 2)
 
 Each floor has a **Map** tab beside **Edit**, also reached from Floor Management

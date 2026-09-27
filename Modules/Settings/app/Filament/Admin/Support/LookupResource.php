@@ -61,7 +61,15 @@ abstract class LookupResource extends Resource
                 TextInput::make('code')
                     ->label('Code')
                     ->maxLength(30)
-                    ->helperText('Optional short code, e.g. ALX.'),
+                    // A code is how spreadsheets and imports name this row —
+                    // "ALX" — so two rows sharing one would be ambiguous, and
+                    // the database refuses it. Said here instead of thrown.
+                    ->unique(
+                        ignoreRecord: true,
+                        modifyRuleUsing: fn (Unique $rule, Get $get): Unique => static::uniqueCodeScope($rule, $get),
+                    )
+                    ->validationMessages(['unique' => 'Another row already uses this code.'])
+                    ->helperText('Optional short code, e.g. ALX. It has to be one nothing else uses.'),
 
                 ...static::extraFields(),
 
@@ -84,6 +92,15 @@ abstract class LookupResource extends Resource
     protected static function uniqueNameScope(Unique $rule, Get $get): Unique
     {
         return $rule;
+    }
+
+    /**
+     * Narrows the code uniqueness check, the same way, for a list whose codes
+     * only have to be unique within something else.
+     */
+    protected static function uniqueCodeScope(Unique $rule, Get $get): Unique
+    {
+        return static::uniqueNameScope($rule, $get);
     }
 
     public static function table(Table $table): Table

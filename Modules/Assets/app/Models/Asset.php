@@ -146,6 +146,11 @@ class Asset extends Model
             $asset->serial_number = trim((string) $asset->serial_number);
             $asset->asset_tag = filled($asset->asset_tag) ? trim((string) $asset->asset_tag) : null;
 
+            // Empty is nothing, not an empty label two assets could share.
+            foreach (['computer_name', 'cord_model', 'cord_serial'] as $field) {
+                $asset->{$field} = filled($asset->{$field}) ? trim((string) $asset->{$field}) : null;
+            }
+
             // Who holds it and whether it is assigned go together.
             if ($asset->isDirty('employee_id')) {
                 if ($asset->employee_id) {

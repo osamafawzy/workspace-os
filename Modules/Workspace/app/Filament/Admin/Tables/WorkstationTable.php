@@ -9,9 +9,11 @@ use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ReplicateAction;
+use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Support\Enums\FontFamily;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
@@ -20,6 +22,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Validation\Rules\Unique;
 use Modules\Workspace\Enums\WorkstationStatus;
 use Modules\Workspace\Exports\WorkstationExport;
 use Modules\Workspace\Filament\Admin\Actions\WorkstationDetailsAction;
@@ -271,12 +274,26 @@ class WorkstationTable
             ->fillForm(fn (Workstation $record): array => [
                 'name' => self::nextFreeName($record),
                 'desk_position' => $record->desk_position,
+                'floor_id' => $record->floor_id,
             ])
             ->schema([
+                // The copy lands on the floor the original is on, and the form
+                // carries it so the name can be checked against that floor.
+                // Filament gives a replicate form the model but not the record.
+                Hidden::make('floor_id'),
+
                 TextInput::make('name')
                     ->label('Workstation ID')
                     ->required()
-                    ->maxLength(100),
+                    ->maxLength(100)
+                    // Said on the field rather than found out when the copy is
+                    // saved; the guard below is the race the form cannot see.
+                    ->unique(
+                        Workstation::class,
+                        'name',
+                        modifyRuleUsing: fn (Unique $rule, Get $get): Unique => $rule->where('floor_id', $get('floor_id')),
+                    )
+                    ->validationMessages(['unique' => 'Another desk on this floor is already called that.']),
                 TextInput::make('desk_position')
                     ->label(Workstation::detailLabel('desk_position'))
                     ->maxLength(20),

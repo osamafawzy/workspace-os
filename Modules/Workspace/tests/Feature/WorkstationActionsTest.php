@@ -70,10 +70,19 @@ class WorkstationActionsTest extends TestCase
         Workstation::factory()->for($floor)->create(['name' => 'WS-099']);
 
         Livewire::test(ListWorkstations::class)
-            ->callTableAction('replicate', $original, data: ['name' => 'WS-099']);
+            ->callTableAction('replicate', $original, data: ['name' => 'WS-099'])
+            // Said on the field, before the database is asked.
+            ->assertHasTableActionErrors(['name' => 'unique']);
 
         $this->assertSame(1, Workstation::query()->where('name', 'WS-099')->count());
         $this->assertSame(2, Workstation::query()->count());
+
+        // The same name on another floor is another desk, and allowed.
+        Livewire::test(ListWorkstations::class)
+            ->callTableAction('replicate', Workstation::factory()->create(['name' => 'WS-001']), data: ['name' => 'WS-099'])
+            ->assertHasNoTableActionErrors();
+
+        $this->assertSame(2, Workstation::query()->where('name', 'WS-099')->count());
     }
 
     public function test_duplicating_needs_the_create_permission(): void
