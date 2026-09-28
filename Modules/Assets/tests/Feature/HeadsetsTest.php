@@ -18,7 +18,9 @@ use Modules\Assets\Imports\HeadsetImporter;
 use Modules\Assets\Models\Asset;
 use Modules\Assets\Models\AssetModel;
 use Modules\Assets\Models\AssetType;
+use Modules\Assets\Models\HandoverForm;
 use Modules\Assets\Models\Manufacturer;
+use Modules\Employees\Enums\EmployeeStatus;
 use Modules\Employees\Models\Employee;
 use Modules\Settings\Models\Site;
 use Tests\TestCase;
@@ -67,6 +69,97 @@ class HeadsetsTest extends TestCase
             ->assertSee('HS-002');
 
         $this->assertSame(2, Asset::query()->headsets()->count());
+    }
+
+    public function test_a_headset_can_be_given_to_somebody_as_it_is_added(): void
+    {
+        $this->actingAs(User::factory()->withPermissions(
+            'assets.view', 'assets.create', 'assignments.assign', 'assignments.view', 'assignments.print',
+        )->create(['name' => 'Engineer One']));
+
+        $type = AssetType::factory()->headset()->create(['name' => 'Headset']);
+        $sara = Employee::factory()->create(['name' => 'Sara Ali', 'oid' => '7654321']);
+
+        Livewire::test(AddHeadsets::class)
+            ->fillForm([
+                'asset_type_id' => $type->id,
+                'serial_number' => 'HS-GIVEN-1',
+                'assign_to' => $sara->id,
+                'handover_notes' => 'Cord and pouch included.',
+            ])
+            ->call('save', true)
+            ->assertHasNoFormErrors()
+            ->assertNotified()
+            // The next headset is for whoever asks next, not for Sara again.
+            ->assertFormSet(['assign_to' => null, 'handover_notes' => null, 'serial_number' => null]);
+
+        $headset = Asset::query()->where('serial_number', 'HS-GIVEN-1')->firstOrFail();
+
+        $this->assertSame($sara->id, $headset->employee_id);
+        $this->assertSame(AssetStatus::Assigned, $headset->status);
+        $this->assertNotNull($headset->assigned_at);
+
+        // The same papers and record as the Assign screen makes.
+        $form = HandoverForm::query()->latest('id')->firstOrFail();
+
+        $this->assertSame($sara->id, $form->employee_id);
+        $this->assertStringStartsWith('HO-', $form->number);
+        $this->assertSame('Cord and pouch included.', $form->snapshot['notes']);
+        $this->assertSame('HS-GIVEN-1', $form->snapshot['assets'][0]['serial_number']);
+
+        $assignment = $headset->assignments()->latest('id')->firstOrFail();
+
+        $this->assertSame($sara->id, $assignment->employee_id);
+        $this->assertSame($form->id, $assignment->handover_form_id);
+        $this->assertNull($assignment->returned_at);
+        $this->assertSame('assigned', $headset->history()->latest('id')->value('event'));
+    }
+
+    public function test_giving_it_away_is_optional_and_needs_the_permission_to_assign(): void
+    {
+        $type = AssetType::factory()->headset()->create(['name' => 'Headset']);
+        $sara = Employee::factory()->create(['name' => 'Sara Ali', 'oid' => '7654321']);
+        $left = Employee::factory()->create(['name' => 'Omar Gone', 'status' => EmployeeStatus::Left]);
+
+        // Somebody who may only add assets is not offered the section at all,
+        // and cannot hand one over by sending the field anyway.
+        $this->actingAs(User::factory()->withPermissions('assets.view', 'assets.create')->create());
+
+        Livewire::test(AddHeadsets::class)
+            ->assertDontSee('Give it to')
+            ->fillForm(['asset_type_id' => $type->id, 'serial_number' => 'HS-STOCK-1'])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $stock = Asset::query()->where('serial_number', 'HS-STOCK-1')->firstOrFail();
+
+        $this->assertNull($stock->employee_id);
+        $this->assertSame(AssetStatus::Available, $stock->status);
+        $this->assertSame(0, HandoverForm::query()->count());
+
+        // And somebody who has left cannot be given one: the headset is still
+        // registered, and it stays in the store.
+        $this->actingAs(User::factory()->withPermissions('assets.view', 'assets.create', 'assignments.assign')->create());
+
+        Livewire::test(AddHeadsets::class)
+            ->fillForm(['asset_type_id' => $type->id, 'serial_number' => 'HS-LEFT-1', 'assign_to' => $left->id])
+            ->call('save')
+            ->assertHasNoFormErrors()
+            ->assertNotified();
+
+        $refused = Asset::query()->where('serial_number', 'HS-LEFT-1')->firstOrFail();
+
+        $this->assertNull($refused->employee_id);
+        $this->assertSame(AssetStatus::Available, $refused->status);
+        $this->assertSame(0, HandoverForm::query()->count());
+
+        // Sara, who has not left, can be.
+        Livewire::test(AddHeadsets::class)
+            ->fillForm(['asset_type_id' => $type->id, 'serial_number' => 'HS-OK-1', 'assign_to' => $sara->id])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertSame($sara->id, Asset::query()->where('serial_number', 'HS-OK-1')->value('employee_id'));
     }
 
     public function test_a_headset_type_is_there_to_pick_even_before_anybody_made_one(): void

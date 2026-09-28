@@ -6,6 +6,7 @@ use App\Filament\Pages\ImportData;
 use App\Support\Navigation\HasConfigurableNavigation;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Section;
@@ -15,6 +16,9 @@ use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
+use Modules\Assets\Actions\AssignAssets as AssignAssetsAction;
 use Modules\Assets\Enums\AssetCondition;
 use Modules\Assets\Enums\AssetStatus;
 use Modules\Assets\Filament\Admin\Support\AssetFields;
@@ -22,6 +26,8 @@ use Modules\Assets\Imports\HeadsetImporter;
 use Modules\Assets\Models\Asset;
 use Modules\Assets\Models\AssetModel;
 use Modules\Assets\Models\AssetType;
+use Modules\Employees\Enums\EmployeeStatus;
+use Modules\Employees\Models\Employee;
 
 /**
  * Asset Management → Adding New Headsets Data.
@@ -108,6 +114,39 @@ class AddHeadsets extends Page
                         AssetFields::location(),
                         AssetFields::account(),
                     ]),
+
+                // Handing it straight to somebody, rather than to the store.
+                // It goes out through the same action as the Assign screen, so
+                // there is a form to sign either way.
+                Section::make('Hand it over')
+                    ->description('Optional. Leave it empty and the headset goes into the store.')
+                    ->visible(fn (): bool => Gate::allows('assign-assets'))
+                    ->columns(3)
+                    ->schema([
+                        Select::make('assign_to')
+                            ->label('Give it to')
+                            ->placeholder('Nobody — into the store')
+                            ->searchable()
+                            ->getSearchResultsUsing(fn (string $search): array => Employee::query()
+                                ->where('status', '!=', EmployeeStatus::Left)
+                                ->where(fn (Builder $query) => $query
+                                    ->where('name', 'like', '%'.$search.'%')
+                                    ->orWhere('oid', 'like', '%'.$search.'%'))
+                                ->orderBy('name')
+                                ->limit(25)
+                                ->get()
+                                ->mapWithKeys(fn (Employee $employee): array => [$employee->getKey() => $employee->auditLabel()])
+                                ->all())
+                            ->getOptionLabelUsing(fn (mixed $value): ?string => Employee::query()->find($value)?->auditLabel())
+                            ->helperText('Search by name or OID. A handover form is made to sign, as on the Assign Assets screen.')
+                            ->columnSpan(2),
+
+                        Textarea::make('handover_notes')
+                            ->label('Notes for the form')
+                            ->rows(2)
+                            ->maxLength(2000)
+                            ->placeholder('e.g. "Cord and pouch included".'),
+                    ]),
             ]);
     }
 
@@ -136,11 +175,12 @@ class AddHeadsets extends Page
             'status' => AssetStatus::Available,
         ]);
 
-        Notification::make()->title("Headset {$asset->serial_number} added")->success()->send();
+        $this->handOver($asset, $data['assign_to'] ?? null, $data['handover_notes'] ?? null);
 
         if ($another) {
-            // Same type, model, place and date; new labels.
-            $this->form->fill([...$data, 'serial_number' => null, 'asset_tag' => null, 'cord_serial' => null]);
+            // Same type, model, place and date; new labels, and nobody to give
+            // the next one to until it is said again.
+            $this->form->fill([...$data, 'serial_number' => null, 'asset_tag' => null, 'cord_serial' => null, 'assign_to' => null, 'handover_notes' => null]);
             $this->dispatch('headset-saved');
 
             return;
@@ -150,6 +190,54 @@ class AddHeadsets extends Page
             'asset_type_id' => $data['asset_type_id'],
             'condition' => AssetCondition::New->value,
         ]);
+    }
+
+    /**
+     * Gives the headset just added to somebody, when one was named.
+     *
+     * Through the Assign action itself, so the assignment record, the history
+     * and the form to sign are the ones the Assign screen makes. The headset
+     * stays in the store if the handover is refused: it is registered either
+     * way, and what went wrong is said rather than swallowed.
+     */
+    protected function handOver(Asset $asset, mixed $employeeId, ?string $notes): void
+    {
+        $employee = filled($employeeId) ? Employee::query()->find($employeeId) : null;
+
+        if (! $employee) {
+            Notification::make()->title("Headset {$asset->serial_number} added")->success()->send();
+
+            return;
+        }
+
+        abort_unless(Gate::allows('assign-assets'), 403);
+
+        try {
+            $form = app(AssignAssetsAction::class)->handle($employee, [$asset->getKey()], auth()->user(), $notes);
+        } catch (ValidationException $exception) {
+            Notification::make()
+                ->title("Headset {$asset->serial_number} added, but not handed over")
+                ->body(collect($exception->errors())->flatten()->implode(' ').' It is in the store; use Assign Assets.')
+                ->warning()
+                ->persistent()
+                ->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->title("Headset {$asset->serial_number} added and given to {$employee->name}")
+            ->body("Handover form {$form->number} is ready to print.")
+            ->success()
+            ->persistent()
+            ->actions([
+                Action::make('print')
+                    ->label('Print the form')
+                    ->button()
+                    ->url(PrintHandoverForm::getUrl(['form' => $form->getKey()]), shouldOpenInNewTab: true)
+                    ->close(),
+            ])
+            ->send();
     }
 
     /** @return Collection<int, Asset> the latest headsets, newest first */

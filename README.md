@@ -605,6 +605,16 @@ release by default.
   then scan serial after serial. **Save and add another** keeps everything but
   the labels — including the cord's model, but not its serial. A "Headset" type
   is created if no headset type exists yet.
+- **Hand it over as you add it (optional):** name an employee under **Hand it
+  over** and the headset goes to them instead of into the store. It is handed
+  over through the same action as the Assign Assets screen, so the assignment
+  record, the history and the **handover form** to sign are the same — the
+  notification links straight to the form to print. Notes typed there are
+  printed on it. The section only appears for somebody who may assign
+  (`assignments.assign`), somebody who has left is refused, and the field is
+  cleared after each save so the next headset does not follow the last one to
+  the same person. If the handover is refused, the headset is still registered
+  and stays in the store, and the notice says why.
 - **The cord** it came with is kept on the headset itself — **Cord Model**,
   **Cord S/N**, **Cord Status** — because that is how it is delivered, used and
   thrown away. A cord serial belongs to one headset, is searchable like any
